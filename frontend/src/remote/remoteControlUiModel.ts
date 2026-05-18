@@ -1,0 +1,495 @@
+import type { KeyboardEvent } from "react";
+
+import type { StreamerMouseButtonKind, StreamerSignalControlResult } from "@uurc/shared/streamerProtocol";
+import type {
+  RemoteControlBootstrap,
+  RemoteSignalGatewayEvent,
+  RemoteSignalGatewayStatus,
+  RoomJoinResult,
+} from "@uurc/shared/types";
+
+import type { BusyAction, NextAction, RemoteVideoSamplesById, RemoteVideoStream } from "../app/remoteControlTypes.js";
+import { toAndroidKeyCodeFromDomEvent } from "./androidKeyCodes.js";
+import type { BrowserRemoteSessionState, BrowserRemoteVideoElementSample } from "./browserRemoteSession.js";
+
+export function createIdleBrowserRemoteState(): BrowserRemoteSessionState {
+  return {
+    appControlId: "",
+    connectionPath: "unknown",
+    dataChannels: {},
+    debugEvents: [],
+    remoteTrackCount: 0,
+    stage: "idle",
+  };
+}
+
+export function selectPrimaryRemoteVideoId(videos: RemoteVideoStream[], samplesById: RemoteVideoSamplesById): string {
+  if (videos.length === 0) return "";
+
+  const scoredVideos = videos
+    .map((video, index) => ({
+      id: video.id,
+      index,
+      score: scoreRemoteVideoSample(samplesById[video.id]),
+    }))
+    .filter((video) => video.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+
+  return scoredVideos[0]?.id ?? videos[0].id;
+}
+
+function scoreRemoteVideoSample(sample: BrowserRemoteVideoElementSample | undefined): number {
+  if (!sample) return 0;
+  const area = positiveNumber(sample.width) * positiveNumber(sample.height);
+  return (
+    area +
+    positiveNumber(sample.totalVideoFrames) * 1000 +
+    positiveNumber(sample.currentTimeMs) +
+    positiveNumber(sample.readyState) * 100
+  );
+}
+
+function positiveNumber(value: number | undefined): number {
+  return value && value > 0 ? value : 0;
+}
+
+export function getNextAction(input: {
+  busy: BusyAction;
+  browserStage: BrowserRemoteSessionState["stage"];
+  controlChannelState: RTCDataChannelState;
+  deviceTotal: number;
+  inputControlActive: boolean;
+  loggedIn: boolean;
+  forceJoin: boolean;
+  roomJoinedForSelectedDevice: boolean;
+  roomRequiresTakeover: boolean;
+  selectedDeviceId: string;
+  selectedDeviceIsCurrentAuthDevice: boolean;
+  signalGatewayErrored: boolean;
+  signalGatewayMatchesRoom: boolean;
+}): NextAction {
+  if (!input.loggedIn) {
+    return {
+      label: "登录账号",
+      detail: "用手机号登录或导入登录态",
+      disabled: input.busy !== null,
+    };
+  }
+  if (input.deviceTotal === 0 || !input.selectedDeviceId) {
+    return {
+      label: "刷新设备",
+      detail: "刷新设备",
+      disabled: input.busy !== null,
+    };
+  }
+  if (input.selectedDeviceIsCurrentAuthDevice) {
+    return {
+      label: "更换账号",
+      detail: "不能控制当前登录态自身设备",
+      disabled: true,
+    };
+  }
+  if (input.roomRequiresTakeover) {
+    return {
+      label: "接管并加入房间",
+      detail: "当前设备已有控制端在线",
+      disabled: input.busy !== null,
+    };
+  }
+  if (!input.roomJoinedForSelectedDevice) {
+    return {
+      label: input.forceJoin ? "接管并加入房间" : "加入房间",
+      detail: input.forceJoin ? "接管当前控制者并获取配置" : "获取远控房间配置",
+      disabled: input.busy !== null,
+    };
+  }
+  if (input.signalGatewayErrored) {
+    return {
+      label: "重新加入房间",
+      detail: "刷新 RoomConfig 后再连接信令",
+      disabled: input.busy !== null,
+    };
+  }
+  if (!input.signalGatewayMatchesRoom) {
+    return {
+      label: "启动连接",
+      detail: "连接远控服务",
+      disabled: input.busy !== null,
+    };
+  }
+  if (input.browserStage === "idle") {
+    return {
+      label: "打开远控画面",
+      detail: "建立远控画面",
+      disabled: input.busy !== null,
+    };
+  }
+  if (input.browserStage !== "connected") {
+    return {
+      label: "等待画面",
+      detail: "等待受控端返回画面",
+      disabled: true,
+    };
+  }
+  if (!input.inputControlActive && input.controlChannelState === "open") {
+    return {
+      label: "解锁输入",
+      detail: "画面已连接，键鼠仍锁定",
+      disabled: input.busy !== null,
+    };
+  }
+  return {
+    label: "同步状态",
+    detail: "连接已建立，刷新链路诊断",
+    disabled: input.busy !== null,
+  };
+}
+
+export function formatSignalGatewayErrorHint(status: RemoteSignalGatewayStatus | null): string {
+  if (status?.status !== "error") return "";
+  const detail = status.error?.trim() || "未知错误";
+  return `连接失败：${detail}`;
+}
+
+export function summarizeSwitchNetworkNotify(events: readonly RemoteSignalGatewayEvent[]): string {
+  let latest: RemoteSignalGatewayEvent | undefined;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.direction === "inbound" && event.event === "switch_network_notify") {
+      latest = event;
+      break;
+    }
+  }
+  if (!latest) return "-";
+
+  const payloads = Array.isArray(latest.payload) ? latest.payload : [latest.payload];
+  const record = payloads.map(asRecord).find((item) => item !== null);
+  if (!record) return "received";
+
+  const transportType = numberValue(record.transport_type);
+  const attemptSwitchType = numberValue(record.attempt_switch_type);
+  return [
+    transportType === undefined ? null : `transport=${transportType}`,
+    attemptSwitchType === undefined ? null : `attempt=${attemptSwitchType}`,
+    `ice=${typeof record.ice_id === "string" && record.ice_id.length > 0 ? "yes" : "no"}`,
+  ]
+    .filter((item): item is string => item !== null)
+    .join(" · ");
+}
+
+const KNOWN_SIGNAL_EVENT_NAMES = new Set([
+  "control",
+  "control:ack",
+  "soac",
+  "soac:ack",
+  "answer",
+  "candidate",
+  "restart_ice",
+  "switch_network_notify",
+  "leave",
+  "left",
+  "released",
+  "bmsg_push",
+  "publisher_disconnect",
+  "be-controlled",
+  "streamer_push",
+  "forward_setting",
+]);
+
+export function summarizeUnexpectedSignalEvents(
+  events: readonly RemoteSignalGatewayEvent[],
+  appDirectEvents: readonly string[],
+): string {
+  const known = new Set([...KNOWN_SIGNAL_EVENT_NAMES, ...appDirectEvents]);
+  const names: string[] = [];
+
+  for (const event of events) {
+    if (event.direction !== "inbound") continue;
+    if (known.has(event.event)) continue;
+    if (names.includes(event.event)) continue;
+    names.push(event.event);
+  }
+
+  if (names.length === 0) return "-";
+  const visible = names.slice(0, 6);
+  const suffix = names.length > visible.length ? ` +${names.length - visible.length}` : "";
+  return `${visible.join(", ")}${suffix}`;
+}
+
+export function formatAutoSwitchThresholds(result: StreamerSignalControlResult | null | undefined): string {
+  if (!result) return "-";
+  const possible = [
+    formatMetricNumber("pkt", result.possibleAutoSwitchPacketLoss),
+    formatMetricNumber("latency", result.possibleAutoSwitchLatency),
+  ].filter((item): item is string => item !== null);
+  const force = [
+    formatMetricNumber("pkt", result.forceAutoSwitchPacketLoss),
+    formatMetricNumber("latency", result.forceAutoSwitchLatency),
+  ].filter((item): item is string => item !== null);
+  const parts = [
+    possible.length > 0 ? `possible ${possible.join(" ")}` : null,
+    force.length > 0 ? `force ${force.join(" ")}` : null,
+  ].filter((item): item is string => item !== null);
+
+  return parts.length > 0 ? parts.join(" / ") : "-";
+}
+
+function formatMetricNumber(label: string, value: number | undefined): string | null {
+  return value === undefined ? null : `${label}=${value}`;
+}
+
+export function createSingleTrackMediaStream(track: MediaStreamTrack): MediaStream {
+  try {
+    return new MediaStream([track]);
+  } catch {
+    const stream = new MediaStream();
+    stream.addTrack(track);
+    return stream;
+  }
+}
+
+export function createAppControlId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `web-${Date.now().toString(36)}`;
+}
+
+export function summarizeRoomJoinUpstream(upstream: unknown) {
+  const record = asRecord(upstream);
+  const body = asRecord(record?.body);
+  const data = asRecord(body?.data);
+  return {
+    status: numberValue(record?.status),
+    statusText: stringValue(record?.statusText),
+    headers: safeHeaderKeys(record?.headers),
+    body: {
+      code: numberValue(body?.code),
+      msg: stringValue(body?.msg),
+      dataKeys: Array.isArray(body?.dataKeys)
+        ? body.dataKeys.filter((item): item is string => typeof item === "string")
+        : data
+          ? Object.keys(data)
+          : undefined,
+    },
+  };
+}
+
+export function getRoomJoinFailureMessage(result: RoomJoinResult | null): string {
+  if (!result || result.roomConfigSummary) return "";
+  const upstreamCode = result.upstream.body.code;
+  const upstreamStatus = result.upstream.status;
+  const refused = (typeof upstreamCode === "number" && upstreamCode !== 0) || upstreamStatus >= 400;
+  if (!refused) return "";
+  const reason = result.upstream.body.msg?.trim() || (typeof upstreamCode === "number" ? `code ${upstreamCode}` : `HTTP ${upstreamStatus}`);
+  return `服务端拒绝加入房间：${reason}`;
+}
+
+export function getRoomJoinFailureTakeoverHint(result: RoomJoinResult | null, forceJoin: boolean): string {
+  if (forceJoin || !result || result.roomConfigSummary) return "";
+  return result.upstream.body.code === 2002 ? "选择接管后重试。" : "";
+}
+
+function safeHeaderKeys(value: unknown): string[] {
+  const record = asRecord(value);
+  return record ? Object.keys(record) : [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+export type RemotePointerLike = {
+  clientX: number;
+  clientY: number;
+  currentTarget: HTMLDivElement;
+};
+
+export function toRemoteMousePosition(event: RemotePointerLike): { absX: number; absY: number; surfaceWidth: number; surfaceHeight: number } {
+  const stageRect = event.currentTarget.getBoundingClientRect();
+  const video = event.currentTarget.querySelector("video");
+  const videoWidth = video?.videoWidth || Math.round(stageRect.width);
+  const videoHeight = video?.videoHeight || Math.round(stageRect.height);
+  const rendered = getContainedMediaRect(stageRect, videoWidth, videoHeight);
+  const relX = clamp((event.clientX - rendered.left) / rendered.width, 0, 1);
+  const relY = clamp((event.clientY - rendered.top) / rendered.height, 0, 1);
+  return {
+    absX: Math.round(relX * videoWidth),
+    absY: Math.round(relY * videoHeight),
+    surfaceWidth: videoWidth,
+    surfaceHeight: videoHeight,
+  };
+}
+
+export function toRemoteMouseButton(button: number): StreamerMouseButtonKind {
+  if (button === 1) return "tertiary";
+  if (button === 2) return "secondary";
+  if (button === 3) return "back";
+  if (button === 4) return "forward";
+  return "primary";
+}
+
+function getContainedMediaRect(container: DOMRect, mediaWidth: number, mediaHeight: number): DOMRect {
+  const mediaRatio = mediaWidth / mediaHeight;
+  const containerRatio = container.width / container.height;
+  if (containerRatio > mediaRatio) {
+    const width = container.height * mediaRatio;
+    return new DOMRect(container.left + (container.width - width) / 2, container.top, width, container.height);
+  }
+
+  const height = container.width / mediaRatio;
+  return new DOMRect(container.left, container.top + (container.height - height) / 2, container.width, height);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function toRemoteKeyValue(event: KeyboardEvent): string | number {
+  return toAndroidKeyCodeFromDomEvent(event);
+}
+
+export function formatRoomJoinContext(context: RemoteControlBootstrap["joinContext"]): string {
+  if (!context) return "-";
+  return context.forceJoin ? "接管加入" : "普通加入";
+}
+
+export function formatRoomReleaseState(
+  status: RemoteSignalGatewayStatus | null,
+  activeRemoteSession: boolean,
+  selectedDeviceOccupied: boolean,
+): string {
+  if (status?.roomClear) {
+    const code = status.roomClear.body.code;
+    return code === undefined || code === 0 ? "已释放房间" : `释放返回 ${code}`;
+  }
+  if (status?.roomClearError) return "释放失败";
+  if (activeRemoteSession) return "控制中";
+  if (selectedDeviceOccupied) return "已有控制端";
+  return "-";
+}
+
+export function formatRoomReleaseDetail(status: RemoteSignalGatewayStatus | null): string {
+  if (status?.roomClearError) return status.roomClearError;
+  if (status?.roomClear) {
+    const message = status.roomClear.body.msg ? ` · ${status.roomClear.body.msg}` : "";
+    return `/api/v1/room/clear/by_device${message}`;
+  }
+  return "断开连接时释放 UU 房间占用";
+}
+
+export function formatInboundVideoStats(stats: BrowserRemoteSessionState["inboundVideo"]): string {
+  if (!stats) return "-";
+  const parts = [
+    stats.codecMimeType,
+    stats.decoderImplementation,
+    stats.framesDecoded === undefined ? null : `decoded=${stats.framesDecoded}`,
+    stats.framesReceived === undefined ? null : `received=${stats.framesReceived}`,
+    stats.packetsReceived === undefined ? null : `pkt=${stats.packetsReceived}`,
+    stats.bytesReceived === undefined ? null : `bytes=${stats.bytesReceived}`,
+    stats.freezeCount === undefined ? null : `freeze=${stats.freezeCount}`,
+    stats.pliCount === undefined ? null : `pli=${stats.pliCount}`,
+    stats.nackCount === undefined ? null : `nack=${stats.nackCount}`,
+    stats.framesPerSecond === undefined ? null : `fps=${stats.framesPerSecond}`,
+    stats.frameWidth && stats.frameHeight ? `${stats.frameWidth}x${stats.frameHeight}` : null,
+  ].filter((item): item is string => item !== null);
+  return parts.length > 0 ? parts.join(" · ") : "-";
+}
+
+export function formatVideoFlow(state: BrowserRemoteSessionState): string {
+  const flow = state.videoFlow;
+  if (!flow) return state.stage === "connected" ? "等待采样" : "-";
+  switch (flow.status) {
+    case "receiving":
+      return "播放中";
+    case "decode_stalled":
+      return "解码停帧";
+    case "transport_stalled":
+      return "收包停滞";
+    case "waiting":
+    default:
+      return "等待视频";
+  }
+}
+
+export function formatVideoElement(sample: BrowserRemoteSessionState["videoElement"]): string {
+  if (!sample) return "-";
+  const parts = [
+    sample.event,
+    `${sample.currentTimeMs}ms`,
+    sample.totalVideoFrames === undefined ? null : `frames=${sample.totalVideoFrames}`,
+    sample.droppedVideoFrames === undefined ? null : `drop=${sample.droppedVideoFrames}`,
+    sample.readyState === undefined ? null : `ready=${sample.readyState}`,
+    sample.width && sample.height ? `${sample.width}x${sample.height}` : null,
+  ].filter((item): item is string => item !== null);
+  return parts.join(" · ");
+}
+
+export function formatSignalGatewayState(state: string): string {
+  switch (state) {
+    case "idle":
+      return "未启动";
+    case "connecting":
+      return "连接中";
+    case "connected":
+      return "已连接";
+    case "closed":
+      return "已关闭";
+    case "error":
+      return "异常";
+    default:
+      return state;
+  }
+}
+
+export function formatBrowserRemoteStage(stage: BrowserRemoteSessionState["stage"]): string {
+  switch (stage) {
+    case "idle":
+      return "未启动";
+    case "controlled":
+      return "control 已授权";
+    case "offered":
+      return "offer 已发出";
+    case "connected":
+      return "已连接";
+    default:
+      return stage;
+  }
+}
+
+export function formatConnectionPath(path: BrowserRemoteSessionState["connectionPath"]): string {
+  switch (path) {
+    case "lan":
+      return "局域网";
+    case "p2p":
+      return "直连";
+    case "relay":
+      return "UU 中转";
+    case "unknown":
+    default:
+      return "未知";
+  }
+}
+
+export function formatDataChannelState(state: string): string {
+  switch (state) {
+    case "connecting":
+      return "连接中";
+    case "open":
+      return "已打开";
+    case "closing":
+      return "关闭中";
+    case "closed":
+      return "已关闭";
+    default:
+      return state;
+  }
+}

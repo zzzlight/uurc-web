@@ -1,0 +1,1290 @@
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { analyzeRemoteSignalReadiness } from "@uurc/shared/streamerProtocol";
+import App from "../src/App.js";
+
+const authReady = {
+  hasState: true,
+  missingFields: [],
+  userId: "user-1",
+  clientId: "client-1",
+  deviceId: "web-device-1",
+  channel: "official",
+};
+
+const authMissing = {
+  hasState: false,
+  missingFields: ["token", "userId", "deviceId"],
+};
+
+let currentAuthStatus: typeof authReady | typeof authMissing = authReady;
+let requestLog: Array<{ method: string; path: string; body: unknown; transportPath?: string }> = [];
+let currentRemoteSignalEvents: unknown[] = [];
+let joinRoomFailure: boolean;
+let lastControlIceId: string;
+let currentControlForceRelay: boolean;
+let currentParticipants: Array<Record<string, unknown>>;
+let currentSignalServers: string[];
+let signalStartError: boolean;
+let remoteTrackPlan: Array<{ id: string; kind: "audio" | "video" }>;
+
+describe("App console", () => {
+  beforeEach(() => {
+    currentAuthStatus = authReady;
+    requestLog = [];
+    joinRoomFailure = false;
+    lastControlIceId = "";
+    currentControlForceRelay = false;
+    currentSignalServers = ["wss://signal.example"];
+    signalStartError = false;
+    remoteTrackPlan = [];
+    currentParticipants = [
+      {
+        client_id: "client-phone-1",
+        device_id: "phone-1",
+        alias: "iPhone",
+        platform: 3,
+        user_join_type: 1,
+        controlled_time: 180,
+        app_flag: { control_mode: "second_screen" },
+      },
+      {
+        client_id: "client-mac-1",
+        device_id: "mac-1",
+        alias: "Studio Mac",
+        platform: 4,
+        user_join_type: 1,
+        controlled_time: 180,
+        app_flag: { control_mode: null },
+      },
+    ];
+    currentRemoteSignalEvents = [
+      {
+        id: 1,
+        direction: "inbound",
+        event: "soac",
+        receivedAt: "2026-05-14T00:00:00.200Z",
+        payload: [
+          {
+            client_id: "controlled-1",
+            data: {
+              type: "answer",
+              sdp: "v=0 answer",
+            },
+          },
+        ],
+      },
+    ];
+    TestPeerConnection.lastConfiguration = null;
+    TestPeerConnection.sentByLabel = {};
+    TestPeerConnection.closed = false;
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+    seedLoginState(authReady);
+    vi.stubGlobal("fetch", vi.fn(handleFetch));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("supports the app-aligned mobile login flow and local state export", async () => {
+    currentAuthStatus = authMissing;
+    window.localStorage.removeItem("uurc.loginState");
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("未登录");
+    expect(screen.getByRole("heading", { name: "登录 UU 远程" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/login");
+    expect(screen.getByText("手机号登录")).toBeInTheDocument();
+    expect(screen.getByText("导入登录态")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "远控画面" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Android 刷新")).not.toBeInTheDocument();
+    expect(screen.queryByText("本地缓存")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ADB/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建网页设备" })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("区号"), "86");
+    await user.type(screen.getByLabelText("手机号"), "13800000000");
+    await user.click(screen.getByRole("button", { name: "获取验证码" }));
+    await screen.findByText("验证码已发送");
+
+    await user.type(screen.getByLabelText("短信验证码"), "123456");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("已登录").length).toBeGreaterThan(0);
+    });
+    await screen.findByRole("heading", { name: "我的设备" });
+    expect(window.location.pathname).toBe("/devices");
+    expect(screen.getAllByText("user-1").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "导出登录态" }));
+    await waitFor(() => {
+      expect((screen.getByLabelText("登录态 JSON") as HTMLTextAreaElement).value).toContain('"token": "header.payload.signature"');
+    });
+  });
+
+  it("uses a consumer remote-control flow: login page, device list, then focused control page", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    await screen.findByRole("button", { name: /Office Mac/ });
+    expect(screen.queryByRole("heading", { name: "远控画面" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出登录态" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /连接 Office Mac/ }));
+
+    await screen.findByRole("heading", { name: "Office Mac" });
+    expect(window.location.pathname).toBe("/devices/desktop-1/control");
+    expect(screen.getByRole("application", { name: "远控画面" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "我的账号" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回设备列表" })).toBeInTheDocument();
+    expect(screen.getByText("控制设置")).toBeInTheDocument();
+    expect(screen.getByText("调试信息")).toBeInTheDocument();
+  });
+
+  it("loads controllable devices and joins a selected room", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentRemoteSignalEvents = [
+      ...currentRemoteSignalEvents,
+      {
+        id: 2,
+        direction: "inbound",
+        event: "soac:ack",
+        receivedAt: "2026-05-14T00:00:00.250Z",
+        payload: ["success", { code: 0 }],
+      },
+      {
+        id: 3,
+        direction: "inbound",
+        event: "mystery_direct_event",
+        receivedAt: "2026-05-14T00:00:00.300Z",
+        payload: [{ opaque: true }],
+      },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    expect(screen.getAllByText("已有控制端").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("iPhone").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Studio Mac").length).toBeGreaterThan(0);
+    const iPhoneParticipant = screen.getByText("iPhone").closest(".participant-card");
+    const macParticipant = screen.getByText("Studio Mac").closest(".participant-card");
+    expect(iPhoneParticipant).not.toBeNull();
+    expect(macParticipant).not.toBeNull();
+    expect(within(iPhoneParticipant as HTMLElement).getByText(/iOS · 主控 · 3m/)).toBeInTheDocument();
+    expect(within(iPhoneParticipant as HTMLElement).getByText(/模式：副屏/)).toBeInTheDocument();
+    expect(within(macParticipant as HTMLElement).getByText(/macOS · 主控 · 3m/)).toBeInTheDocument();
+    expect(within(macParticipant as HTMLElement).getByText(/模式：普通桌面/)).toBeInTheDocument();
+    expect(screen.getByText("控制模式")).toBeInTheDocument();
+    expect(screen.getAllByText("普通桌面").length).toBeGreaterThan(0);
+    expect(screen.getByRole("radio", { name: "普通加入" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "接管控制" })).not.toBeChecked();
+    expect(screen.queryByText(/room-token-1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/report-token-1/)).not.toBeInTheDocument();
+    expect(screen.getByText("连接服务")).toBeInTheDocument();
+    expect(screen.getByText(/X-NRD-AUTH=<redacted room token>/)).toBeInTheDocument();
+    expect(screen.getByText("soac, streamer_push, forward_setting, device_capability")).toBeInTheDocument();
+    expect(screen.queryByText(/be-controlled, answer, candidate/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    expect(screen.getByRole("radio", { name: "自动路径" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "强制 UU 中转" }));
+    expect(getPrimaryAction("接管并加入房间")).toBeEnabled();
+    expect(screen.getByText("选择接管后重试")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "接管控制" }));
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
+    });
+    await user.click(getPrimaryAction("接管并加入房间"));
+    await waitFor(() => {
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
+    });
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
+    });
+    expect(screen.getByText(/gzip_sdp":false/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+    expect(TestPeerConnection.lastConfiguration).toMatchObject({ iceTransportPolicy: "relay" });
+    expect(screen.getAllByText("强制中转").length).toBeGreaterThan(0);
+    expect(screen.getByText("使用 ack ICE")).toBeInTheDocument();
+    expect(screen.getByText("possible pkt=8 latency=90 / force pkt=18 latency=160")).toBeInTheDocument();
+    expect(screen.getByText("mystery_direct_event")).toBeInTheDocument();
+    expect(screen.getByText("入会方式")).toBeInTheDocument();
+    expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
+    expect(screen.getByText("连接许可已确认")).toBeInTheDocument();
+    expect(uuCalls("/api/v1/room/app_flag")).toHaveLength(0);
+    expect(screen.queryByText("controlled-1")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(requestLog.some((call) => call.path === "/api/remote/signal/events")).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("UU 中转").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole("button", { name: "手动断开连接" }));
+    await waitFor(() => {
+      expect(screen.getAllByText("已关闭").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("starts the remote view from the connection action without a second click", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+  });
+
+  it("can start the signal gateway from a selected signal entry", async () => {
+    currentParticipants = [];
+    currentSignalServers = ["wss://signal-a.example", "wss://signal-b.example"];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+
+    await user.selectOptions(screen.getByLabelText("信令入口"), "1");
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+
+    await waitFor(() => {
+      const startCalls = requestLog.filter((call) => call.path === "/api/remote/signal/start");
+      expect(startCalls.at(-1)?.body).toMatchObject({ gzipSdp: false, signalServerIndex: 1 });
+      expect(startCalls.at(-1)?.body).toHaveProperty("roomConfig.token", "room-token-1");
+    });
+    expect(screen.getByText("wss://signal-b.example")).toBeInTheDocument();
+  });
+
+  it("asks the operator to rejoin the room when the signal gateway rejects a stale RoomConfig", async () => {
+    currentParticipants = [];
+    signalStartError = true;
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+
+    await screen.findByText("连接失败：websocket error");
+    expect(getPrimaryAction("重新加入房间")).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+  });
+
+  it("presents the console as an operator workflow instead of a protocol dump", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    expect(screen.getByRole("heading", { name: "设备" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /连接 Office Mac/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("账号管理")).toBeInTheDocument();
+    expect(screen.queryByLabelText("远控主流程")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "启动连接" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "桌面端" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "移动端" })).toBeInTheDocument();
+  });
+
+  it("prioritizes the remote workspace over account administration", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+
+    const panelHeadings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+    expect(panelHeadings.slice(0, 2)).toEqual(["设备", "账号管理"]);
+    expect(await screen.findByRole("button", { name: /连接 Office Mac/ })).toBeInTheDocument();
+    expect(screen.queryByRole("application", { name: "远控画面" })).not.toBeInTheDocument();
+  });
+
+  it("presents account operations as a controller identity workflow", async () => {
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+
+    expect(screen.getByRole("heading", { name: "账号管理" })).toBeInTheDocument();
+    const identityStatus = screen.getByLabelText("账号状态");
+    expect(within(identityStatus).getByText("身份")).toBeInTheDocument();
+    expect(within(identityStatus).getByText("网页控制端")).toBeInTheDocument();
+    expect(within(identityStatus).getByText("状态")).toBeInTheDocument();
+    expect(within(identityStatus).getByText("本机控制端")).toBeInTheDocument();
+    expect(screen.queryByText("导入登录态")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出登录态" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  it("logs out from account management and returns to the login entry", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    expect(window.localStorage.getItem("uurc.loginState")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "退出登录" }));
+
+    await screen.findByRole("heading", { name: "登录 UU 远程" });
+    expect(window.localStorage.getItem("uurc.loginState")).toBeNull();
+    expect(screen.getByText("导入登录态")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
+  });
+
+  it("shows the upstream room join blocker when the service refuses an occupied target", async () => {
+    joinRoomFailure = true;
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user, { waitForReady: false });
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain("服务端拒绝加入房间");
+    });
+    expect(screen.getByText("选择接管后重试。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+  });
+
+  it("blocks joining the current controller device as a remote target", async () => {
+    currentAuthStatus = { ...authReady, deviceId: "desktop-1" };
+    seedLoginState({ ...authReady, deviceId: "desktop-1" });
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    expect(await screen.findByText("Office Mac")).toBeInTheDocument();
+    expect(screen.getByText("当前登录态")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /连接 Office Mac/ })).not.toBeInTheDocument();
+
+    expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(0);
+  });
+
+  it("surfaces a productized remote readiness diagnosis when the controlled side leaves before answer", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentRemoteSignalEvents = [
+      {
+        id: 1,
+        direction: "outbound",
+        event: "control",
+        receivedAt: "2026-05-14T00:00:00.000Z",
+        payload: { app_control_id: "control-1" },
+      },
+      {
+        id: 2,
+        direction: "inbound",
+        event: "control:ack",
+        receivedAt: "2026-05-14T00:00:00.050Z",
+        payload: ["success", { code: 0 }],
+      },
+      {
+        id: 3,
+        direction: "outbound",
+        event: "soac",
+        receivedAt: "2026-05-14T00:00:00.100Z",
+        payload: { client_id: "controlled-1", data: { type: "offer", ice_id: "ice-1" } },
+      },
+      {
+        id: 4,
+        direction: "inbound",
+        event: "leave",
+        receivedAt: "2026-05-14T00:00:00.200Z",
+        payload: [{ ice_id: "ice-1", "ntes-trace-id": "trace-server-kick-1" }],
+      },
+      {
+        id: 5,
+        direction: "inbound",
+        event: "switch_network_notify",
+        receivedAt: "2026-05-14T00:00:00.250Z",
+        payload: [{ transport_type: 3, attempt_switch_type: 2, ice_id: "ice-1" }],
+      },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "接管控制" }));
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
+    });
+    await user.click(getPrimaryAction("接管并加入房间"));
+    await waitFor(() => {
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+
+    await screen.findByText("远控诊断");
+    await screen.findByText("受控端离开，未收到 answer");
+    await screen.findByText("服务端断开 · leave · trace-server-kick-1 · ice=matched");
+    await screen.findByText("transport=3 · attempt=2 · ice=yes");
+    expect(screen.getByText("连接确认已收到")).toBeInTheDocument();
+    expect(screen.getByText("offer 已发送")).toBeInTheDocument();
+    expect(requestLog.some((call) => call.path === "/api/remote/signal/diagnostics")).toBe(true);
+  });
+
+  it("labels missing answer as waiting for the controlled session", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentRemoteSignalEvents = [
+      {
+        id: 1,
+        direction: "outbound",
+        event: "control",
+        receivedAt: "2026-05-14T00:00:00.000Z",
+        payload: { app_control_id: "control-1" },
+      },
+      {
+        id: 2,
+        direction: "inbound",
+        event: "control:ack",
+        receivedAt: "2026-05-14T00:00:00.050Z",
+        payload: ["success", { code: 0 }],
+      },
+      {
+        id: 3,
+        direction: "outbound",
+        event: "soac",
+        receivedAt: "2026-05-14T00:00:00.100Z",
+        payload: { client_id: "controlled-1", data: { type: "offer", ice_id: "ice-1" } },
+      },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "接管控制" }));
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
+    });
+    await user.click(getPrimaryAction("接管并加入房间"));
+    await waitFor(() => {
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("等待受控端 answer").length).toBeGreaterThan(0);
+    });
+    await screen.findByText("受控端回包未到达");
+  });
+
+  it("recommends explicit takeover when a normal join leaves before answer", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    currentRemoteSignalEvents = [
+      {
+        id: 1,
+        direction: "outbound",
+        event: "control",
+        receivedAt: "2026-05-14T00:00:00.000Z",
+        payload: { app_control_id: "control-1" },
+      },
+      {
+        id: 2,
+        direction: "inbound",
+        event: "control:ack",
+        receivedAt: "2026-05-14T00:00:00.050Z",
+        payload: ["success", { code: 0 }],
+      },
+      {
+        id: 3,
+        direction: "outbound",
+        event: "soac",
+        receivedAt: "2026-05-14T00:00:00.100Z",
+        payload: { client_id: "controlled-1", data: { type: "offer", ice_id: "ice-1" } },
+      },
+      {
+        id: 4,
+        direction: "inbound",
+        event: "leave",
+        receivedAt: "2026-05-14T00:00:00.200Z",
+        payload: [{ ice_id: "ice-1" }],
+      },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+
+    await screen.findByText("answer 未返回");
+    await screen.findByText("受控端回包未到达");
+    await screen.findByText("画面未返回。");
+    expect(screen.getByRole("radio", { name: "普通加入" })).toBeChecked();
+  });
+
+  it("surfaces a failed be-controlled ControlResult before waiting for answer", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentRemoteSignalEvents = [
+      {
+        id: 1,
+        direction: "outbound",
+        event: "control",
+        receivedAt: "2026-05-14T00:00:00.000Z",
+        payload: { app_control_id: "control-1" },
+      },
+      {
+        id: 2,
+        direction: "inbound",
+        event: "control:ack",
+        receivedAt: "2026-05-14T00:00:00.050Z",
+        payload: ["success", { code: 0 }],
+      },
+      {
+        id: 3,
+        direction: "outbound",
+        event: "soac",
+        receivedAt: "2026-05-14T00:00:00.100Z",
+        payload: { client_id: "controlled-1", data: { type: "offer", ice_id: "ice-1" } },
+      },
+      {
+        id: 4,
+        direction: "inbound",
+        event: "be-controlled",
+        receivedAt: "2026-05-14T00:00:00.150Z",
+        payload: [{ code: 100001, msg: "occupied" }],
+      },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "接管控制" }));
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
+    });
+    await user.click(getPrimaryAction("接管并加入房间"));
+    await waitFor(() => {
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+
+    await screen.findByText("be-controlled 返回失败");
+    await screen.findByText("code=100001 · protocol=protocol_error_2021 · msg=occupied");
+    expect(screen.getByText("be-controlled 失败")).toBeInTheDocument();
+    expect(screen.queryByText("等待受控端 SetRemoteOffer/answer")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a failed control ack before sending an offer", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentRemoteSignalEvents = [
+      {
+        id: 1,
+        direction: "outbound",
+        event: "control",
+        receivedAt: "2026-05-14T00:00:00.000Z",
+        payload: { app_control_id: "control-1" },
+      },
+      {
+        id: 2,
+        direction: "inbound",
+        event: "control:ack",
+        receivedAt: "2026-05-14T00:00:00.050Z",
+        payload: ["fail", { code: 100002, msg: "rejected" }],
+      },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "接管控制" }));
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
+    });
+    await user.click(getPrimaryAction("接管并加入房间"));
+    await waitFor(() => {
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await openAdvancedSettings(user);
+    await user.click(screen.getByRole("button", { name: "手动同步诊断" }));
+
+    await screen.findByText("ack=fail · code=100002 · protocol=protocol_error_2022 · msg=rejected");
+    expect(screen.getAllByText("连接确认失败").length).toBeGreaterThan(0);
+  });
+
+  it("respects service-requested relay while the operator keeps automatic routing", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentControlForceRelay = true;
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    expect(screen.getByRole("radio", { name: "自动路径" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "接管控制" }));
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
+    });
+    await user.click(getPrimaryAction("接管并加入房间"));
+    await waitFor(() => {
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+
+    expect(TestPeerConnection.lastConfiguration).toMatchObject({ iceTransportPolicy: "all" });
+    expect(screen.getByRole("radio", { name: "自动路径" })).toBeChecked();
+    expect(screen.getAllByText("服务端要求中转").length).toBeGreaterThan(0);
+  });
+
+  it("keeps remote input locked until the operator explicitly enables control", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+
+    await screen.findByText("输入控制锁定");
+    await user.type(screen.getByLabelText("远控文本输入"), "hello");
+    expect(screen.getByRole("button", { name: "发送文本" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "启用输入控制" }));
+    expect(screen.getByText("输入控制已启用")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送文本" })).toBeEnabled();
+    expect(document.activeElement).toHaveAttribute("aria-label", "远控画面");
+
+    await user.keyboard("a");
+    expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(0);
+  });
+
+  it("shows a first-class disconnect action that closes the browser remote session", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await screen.findByRole("button", { name: "断开连接" });
+
+    await user.click(screen.getByRole("button", { name: "断开连接" }));
+
+    await waitFor(() => {
+      expect(requestLog.some((call) => call.method === "DELETE" && call.path === "/api/remote/signal")).toBe(true);
+    });
+    const deleteCallIndex = requestLog.findIndex((call) => call.method === "DELETE" && call.path === "/api/remote/signal");
+    await waitFor(() => {
+      expect(requestLog.slice(deleteCallIndex + 1).some((call) => call.method === "GET" && call.path === "/api/v1/device/groups/of/my")).toBe(true);
+    });
+    expect(TestPeerConnection.closed).toBe(true);
+    expect(screen.getAllByText("已关闭").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("已释放房间").length).toBeGreaterThan(0);
+  });
+
+  it("disconnects the active remote session before returning to the device list", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+
+    await user.click(screen.getByRole("button", { name: "返回设备列表" }));
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    expect(window.location.pathname).toBe("/devices");
+    await waitFor(() => {
+      expect(requestLog.some((call) => call.method === "DELETE" && call.path === "/api/remote/signal")).toBe(true);
+    });
+    expect(TestPeerConnection.closed).toBe(true);
+    expect(screen.queryByRole("heading", { name: "Office Mac" })).not.toBeInTheDocument();
+  });
+
+  it("keeps extra incoming video tracks out of the main remote-control surface", async () => {
+    vi.stubGlobal("MediaStream", FakeMediaStream);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    remoteTrackPlan = [
+      { id: "blank-video", kind: "video" },
+      { id: "desktop-video", kind: "video" },
+      { id: "remote-audio", kind: "audio" },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
+
+    await screen.findByLabelText("远控画面视频");
+    expect(screen.queryByLabelText("远控视频 2")).not.toBeInTheDocument();
+    expect(screen.queryByText(/视频轨/)).not.toBeInTheDocument();
+    expect(screen.getByText(/2 路视频/)).toBeInTheDocument();
+  });
+});
+
+async function openOfficeMacControl(
+  user: ReturnType<typeof userEvent.setup>,
+  options: { waitForReady?: boolean } = {},
+): Promise<void> {
+  await screen.findByRole("heading", { name: "我的设备" });
+  await user.click(await screen.findByRole("button", { name: /连接 Office Mac/ }));
+  await screen.findByRole("heading", { name: "Office Mac" });
+  if (options.waitForReady !== false) {
+    await screen.findByText("已就绪");
+  }
+}
+
+function expectSignalState(expected: string): void {
+  const signalStateLabel = screen.getByText("信令状态");
+  expect(signalStateLabel.closest(".status-row")).toHaveTextContent(expected);
+}
+
+function getPrimaryAction(name: string): HTMLElement {
+  return within(screen.getByLabelText("远控主流程")).getByRole("button", { name });
+}
+
+async function openAdvancedSettings(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  const advanced = screen.getByText("调试信息");
+  const details = advanced.closest("details");
+  if (!details?.hasAttribute("open")) {
+    await user.click(advanced);
+  }
+}
+
+async function handleFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const path = String(input);
+  const method = init?.method ?? "GET";
+  const body = init?.body ? JSON.parse(String(init.body)) : null;
+
+  if (path === "/api/proxy/uu" && method === "POST") {
+    return handleUuProxyFetch(body);
+  }
+
+  requestLog.push({ method, path, body });
+
+  if (path === "/api/remote/signal/start" && method === "POST") {
+    expect(body).toMatchObject({ gzipSdp: false });
+    expect(body).toHaveProperty("roomConfig.token", "room-token-1");
+    expect(body).toHaveProperty("joinContext.deviceId", "desktop-1");
+    if (signalStartError) {
+      return jsonResponse({
+        status: "error",
+        strategy: "backend_signal_gateway",
+        selectedSignalServer: currentSignalServers[0],
+        signalServers: currentSignalServers,
+        signalHeaders: {
+          "X-NRD-AUTH": "<redacted room token>",
+          "X-NRD-CONTROLLING": "0",
+          streamer_version: "V3.1.14",
+          streamer_flag: "{\"sdp_flags\":{\"gzip_sdp\":false}}",
+        },
+        signalControl: {
+          socketEvents: {
+            control: "control",
+            leave: "leave",
+            bmsgPush: "bmsg_push",
+            publisherDisconnect: "publisher_disconnect",
+          },
+          event: "control",
+          payloadKeys: ["app_control_id", "app_data", "streamer_data"],
+          ackTimeoutMs: 10000,
+        },
+        connectionId: "web-test-signal-1",
+        startedAt: "2026-05-14T00:00:00.000Z",
+        updatedAt: "2026-05-14T00:00:00.000Z",
+        error: "websocket error",
+      });
+    }
+    const signalServerIndex = typeof body.signalServerIndex === "number" ? body.signalServerIndex : 0;
+    return jsonResponse({
+      status: "connected",
+      strategy: "backend_signal_gateway",
+      selectedSignalServer: currentSignalServers[signalServerIndex] ?? currentSignalServers[0],
+      signalServers: currentSignalServers,
+      signalHeaders: {
+        "X-NRD-AUTH": "<redacted room token>",
+        "X-NRD-CONTROLLING": "0",
+        streamer_version: "V3.1.14",
+        streamer_flag: "{\"sdp_flags\":{\"gzip_sdp\":false}}",
+      },
+      signalControl: {
+        socketEvents: {
+          control: "control",
+          leave: "leave",
+          bmsgPush: "bmsg_push",
+          publisherDisconnect: "publisher_disconnect",
+        },
+        event: "control",
+        payloadKeys: ["app_control_id", "app_data", "streamer_data"],
+        ackTimeoutMs: 10000,
+      },
+      connectionId: "web-test-signal-1",
+      startedAt: "2026-05-14T00:00:00.000Z",
+      updatedAt: "2026-05-14T00:00:00.000Z",
+    });
+  }
+
+  if (path === "/api/remote/signal/control" && method === "POST") {
+    expect(body.appControlId).toEqual(expect.any(String));
+    expect(body.appDataBase64).toEqual(expect.any(String));
+    expect(body.streamerData).toContain('"control_id"');
+    const streamerData = JSON.parse(body.streamerData);
+    expect(streamerData.device_capability.display_info[0]).toMatchObject({
+      fps: 60,
+      type: 0,
+      hdr: -1,
+    });
+    expect(streamerData.device_capability.video_codec_capability[0]).toMatchObject({
+      video_codec: 1,
+      width: 3840,
+      height: 2160,
+    });
+    expect(streamerData.device_capability.ice_id).toBe("");
+    lastControlIceId = "control-ice-1";
+    return jsonResponse({
+      event: "control",
+      ackStatus: "success",
+      ack: [],
+      control: {
+        ackStatus: "success",
+        result: {
+          clientId: "controlled-1",
+          iceId: lastControlIceId,
+          forceRelay: currentControlForceRelay,
+          autoSwitchNetwork: true,
+          forceAutoSwitchPacketLoss: 18,
+          forceAutoSwitchLatency: 160,
+          possibleAutoSwitchPacketLoss: 8,
+          possibleAutoSwitchLatency: 90,
+          iceServers: [
+            {
+              urls: "stun:stun.example:3478",
+            },
+          ],
+        },
+      },
+      emittedAt: "2026-05-14T00:00:00.000Z",
+      ackReceivedAt: "2026-05-14T00:00:00.050Z",
+    });
+  }
+
+  if (path === "/api/remote/signal/soac" && method === "POST") {
+    expect(body).toMatchObject({
+      type: "offer",
+      clientId: "controlled-1",
+      iceId: lastControlIceId,
+      sdp: "v=0 browser offer",
+      gzipSdp: false,
+      iceNetworkType: 3,
+    });
+    expect(body.appControlId).toEqual(expect.any(String));
+    return jsonResponse({
+      event: "soac",
+      payload: body,
+      emittedAt: "2026-05-14T00:00:00.100Z",
+    });
+  }
+
+  if (path === "/api/remote/signal/events") {
+    return jsonResponse(currentRemoteSignalEvents);
+  }
+
+  if (path === "/api/remote/signal/diagnostics") {
+    return jsonResponse(
+      analyzeRemoteSignalReadiness({
+        events: currentRemoteSignalEvents,
+        signalStatus: {
+          status: "connected",
+          strategy: "backend_signal_gateway",
+          selectedSignalServer: "wss://signal.example",
+          signalServers: ["wss://signal.example"],
+          signalHeaders: {
+            "X-NRD-AUTH": "<redacted room token>",
+          },
+          signalControl: {
+            socketEvents: {
+              control: "control",
+              leave: "leave",
+              bmsgPush: "bmsg_push",
+              publisherDisconnect: "publisher_disconnect",
+            },
+            event: "control",
+            payloadKeys: ["app_control_id", "app_data", "streamer_data"],
+            ackTimeoutMs: 10000,
+          },
+          connectionId: "web-test-signal-1",
+          startedAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T00:00:00.000Z",
+        },
+      }),
+    );
+  }
+
+  if (path === "/api/remote/signal" && method === "DELETE") {
+    return jsonResponse({
+      status: "closed",
+      strategy: "backend_signal_gateway",
+      selectedSignalServer: "wss://signal.example",
+      signalServers: ["wss://signal.example"],
+      signalHeaders: {
+        "X-NRD-AUTH": "<redacted room token>",
+      },
+      signalControl: {
+        socketEvents: {
+          control: "control",
+          leave: "leave",
+          bmsgPush: "bmsg_push",
+          publisherDisconnect: "publisher_disconnect",
+        },
+        event: "control",
+        payloadKeys: ["app_control_id", "app_data", "streamer_data"],
+        ackTimeoutMs: 10000,
+      },
+      startedAt: "2026-05-14T00:00:00.000Z",
+      updatedAt: "2026-05-14T00:00:01.000Z",
+      roomClear: {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+        body: {
+          code: 0,
+          msg: "ok",
+        },
+      },
+    });
+  }
+
+  throw new Error(`Unhandled fetch ${method} ${path}`);
+}
+
+async function handleUuProxyFetch(body: unknown): Promise<Response> {
+  const request = body as { method: string; path: string; body?: unknown; headers?: Record<string, string> };
+  requestLog.push({
+    method: request.method,
+    path: request.path,
+    body: request.body ?? null,
+    transportPath: "/api/proxy/uu",
+  });
+  expect(request.headers?.["X-Param-SIGN"]).toEqual(expect.any(String));
+
+  if (request.path === "/api/v1/device/android/init" && request.method === "POST") {
+    expect(request.body).toMatchObject({ client_id: expect.stringMatching(/^uurc-web-/), model: "Pixel 8" });
+    return jsonResponse(uuResponse({ code: 0, data: { device_id: "web-device-1" } }));
+  }
+
+  if (request.path === "/api/v1/security/mobile/code" && request.method === "POST") {
+    expect(request.body).toEqual({ country_code: "86", mobile: "13800000000", type: "login" });
+    return jsonResponse(uuResponse({ code: 0, data: { ok: true } }));
+  }
+
+  if (request.path === "/api/v1/login/by_mobile" && request.method === "POST") {
+    expect(request.body).toEqual({ country_code: "86", mobile: "13800000000", code: "123456" });
+    currentAuthStatus = authReady;
+    return jsonResponse(uuResponse({
+      code: 0,
+      data: {
+        user_id: "user-1",
+        nickname: "Local User",
+        token: "header.payload.signature",
+      },
+    }));
+  }
+
+  if (request.path === "/api/v1/device/groups/of/my" && request.method === "GET") {
+    return jsonResponse(uuResponse({
+      code: 0,
+      data: {
+        desktop_devices: [
+          {
+            device_id: "desktop-1",
+            alias: "Office Mac",
+            controllable: true,
+            status: "CONNECTED",
+            app_flag: { control_mode: null },
+            participants_info: currentParticipants,
+          },
+        ],
+        mobile_devices: [],
+        tv_devices: [],
+      },
+    }));
+  }
+
+  if (request.path === "/api/v1/room/join/by_device/desktop-1" && request.method === "POST") {
+    expect(request.body).toEqual({
+      force_join: uuCalls("/api/v1/room/join/by_device/desktop-1").length === 2,
+    });
+    if (joinRoomFailure) {
+      return jsonResponse(uuResponse({
+        code: 2002,
+        msg: "被控端正在被远控中，无法发起连接",
+      }, 400));
+    }
+    return jsonResponse(uuResponse({
+      code: 0,
+      data: {
+        room_config: {
+          token: "room-token-1",
+          signal_servers: currentSignalServers,
+          timeout: 12000,
+          signal_reconnect_delay: 1500,
+          report_token: "report-token-1",
+          app_data: "{}",
+        },
+      },
+    }));
+  }
+
+  if (request.path === "/api/v1/room/clear/by_device/desktop-1" && request.method === "POST") {
+    return jsonResponse(uuResponse({ code: 0, msg: "ok" }));
+  }
+
+  if (request.path === "/api/v1/room/app_flag" && request.method === "POST") {
+    expect(request.body).toEqual({
+      publisher_device_id: "desktop-1",
+      app_flag: { control_mode: null },
+    });
+    return jsonResponse(uuResponse({ code: 0 }));
+  }
+
+  throw new Error(`Unhandled UU proxy ${request.method} ${request.path}`);
+}
+
+function uuResponse(body: unknown, status = 200) {
+  return {
+    status,
+    statusText: status === 200 ? "OK" : "Bad Request",
+    headers: { "content-type": "application/json" },
+    body,
+  };
+}
+
+function uuCalls(path: string) {
+  return requestLog.filter((call) => call.path === path && call.transportPath === "/api/proxy/uu");
+}
+
+function seedLoginState(status: typeof authReady): void {
+  window.localStorage.setItem(
+    "uurc.loginState",
+    JSON.stringify({
+      token: "header.payload.signature",
+      userId: status.userId,
+      clientId: status.clientId,
+      deviceId: status.deviceId,
+      channel: status.channel,
+    }),
+  );
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+class TestPeerConnection {
+  static lastConfiguration: RTCConfiguration | null = null;
+  static sentByLabel: Record<string, number[]> = {};
+  static closed = false;
+  localDescription: RTCSessionDescriptionInit | null = null;
+  remoteDescription: RTCSessionDescriptionInit | null = null;
+  onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
+  ontrack: ((event: RTCTrackEvent) => void) | null = null;
+
+  constructor(configuration?: RTCConfiguration) {
+    TestPeerConnection.lastConfiguration = configuration ?? null;
+  }
+
+  createDataChannel(label: string): RTCDataChannel {
+    return {
+      label,
+      readyState: "open",
+      binaryType: "arraybuffer",
+      onopen: null,
+      onclose: null,
+      onerror: null,
+      send: (data: string | Blob | ArrayBuffer | ArrayBufferView) => {
+        const bytes = data instanceof ArrayBuffer
+          ? data.byteLength
+          : ArrayBuffer.isView(data)
+            ? data.byteLength
+            : typeof data === "string"
+              ? data.length
+              : 0;
+        TestPeerConnection.sentByLabel[label] = [...(TestPeerConnection.sentByLabel[label] ?? []), bytes];
+      },
+      close: () => {},
+    } as unknown as RTCDataChannel;
+  }
+
+  addTransceiver(_kind: "audio" | "video", _init?: RTCRtpTransceiverInit): RTCRtpTransceiver {
+    return {} as RTCRtpTransceiver;
+  }
+
+  async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: "offer", sdp: "v=0 browser offer" };
+  }
+
+  async setLocalDescription(description: RTCSessionDescriptionInit): Promise<void> {
+    this.localDescription = description;
+  }
+
+  async setRemoteDescription(description: RTCSessionDescriptionInit): Promise<void> {
+    this.remoteDescription = description;
+    for (const track of remoteTrackPlan) {
+      const mediaTrack = new FakeMediaStreamTrack(track.id, track.kind);
+      const stream = new FakeMediaStream([mediaTrack]);
+      this.ontrack?.({ track: mediaTrack, streams: [stream] } as unknown as RTCTrackEvent);
+    }
+  }
+
+  async addIceCandidate(_candidate: RTCIceCandidateInit): Promise<void> {}
+
+  async getStats(): Promise<Map<string, Record<string, unknown>>> {
+    return new Map<string, Record<string, unknown>>([
+      [
+        "pair-1",
+        {
+          id: "pair-1",
+          type: "candidate-pair",
+          selected: true,
+          state: "succeeded",
+          localCandidateId: "local-1",
+          remoteCandidateId: "remote-1",
+        },
+      ],
+      ["local-1", { id: "local-1", type: "local-candidate", candidateType: "relay", protocol: "udp", address: "203.0.113.10" }],
+      ["remote-1", { id: "remote-1", type: "remote-candidate", candidateType: "relay", address: "203.0.113.11" }],
+    ]);
+  }
+
+  close(): void {
+    TestPeerConnection.closed = true;
+  }
+}
+
+class FakeMediaStreamTrack {
+  constructor(
+    readonly id: string,
+    readonly kind: "audio" | "video",
+  ) {}
+}
+
+class FakeMediaStream {
+  private readonly tracks: FakeMediaStreamTrack[];
+
+  constructor(tracks: FakeMediaStreamTrack[] = []) {
+    this.tracks = [...tracks];
+  }
+
+  addTrack(track: FakeMediaStreamTrack): void {
+    this.tracks.push(track);
+  }
+
+  getTracks(): FakeMediaStreamTrack[] {
+    return [...this.tracks];
+  }
+
+  getVideoTracks(): FakeMediaStreamTrack[] {
+    return this.tracks.filter((track) => track.kind === "video");
+  }
+}

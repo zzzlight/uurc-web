@@ -1,0 +1,25 @@
+{
+  "name": "uurc-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n shared,backend,frontend -c blue,green,magenta \"npm run dev -w shared\" \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build:cloudflare": "npm run build -w shared && npm run build -w frontend",
+    "dev:cloudflare": "npx wrangler dev",
+    "deploy:cloudflare": "npx wrangler deploy",
+    "build": "npm run build -w shared && npm run build -w backend && npm run build -w frontend",
+    "test": "npm run test -w shared && npm run test -w backend && npm run test -w frontend",
+    "test:unit": "npm run test -w shared && npm run test -w backend && npm run test -w frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.18"
+  }
+}
