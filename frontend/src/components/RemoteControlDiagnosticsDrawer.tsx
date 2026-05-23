@@ -29,6 +29,7 @@ export function RemoteControlDiagnosticsDrawer({
   roomJoinModeDebugLabel,
   roomReleaseDetail,
   roomReleaseLabel,
+  runtimeProfile,
   selectedDevice,
   selectedDeviceId,
   serviceRoutePolicyLabel,
@@ -65,6 +66,7 @@ export function RemoteControlDiagnosticsDrawer({
   | "roomJoinModeDebugLabel"
   | "roomReleaseDetail"
   | "roomReleaseLabel"
+  | "runtimeProfile"
   | "selectedDevice"
   | "selectedDeviceId"
   | "serviceRoutePolicyLabel"
@@ -101,6 +103,7 @@ export function RemoteControlDiagnosticsDrawer({
         <StatusRow label="候选链路" value={candidatePairSummary} />
         <StatusRow label="链路策略" value={effectiveConnectionRouteLabel} />
         <StatusRow label="服务链路" value={serviceRoutePolicyLabel} />
+        <StatusRow label="部署运行时" value={runtimeProfile ? `${runtimeProfile.runtime} · ${runtimeProfile.signalGateway}` : "-"} />
         <StatusRow label="ICE" value={iceControlStatusLabel} />
         <StatusRow label="自动切换" value={autoSwitchThresholdLabel} />
         <StatusRow label="网络事件" value={networkSwitchSummary} />

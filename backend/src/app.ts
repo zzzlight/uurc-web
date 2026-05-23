@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import express from "express";
+import { createRuntimeProfile } from "@uurc/shared";
 
 import { createConfig, type BackendConfigOverrides } from "./config.js";
 import { errorHandler } from "./middleware/errorHandler.js";
@@ -22,7 +23,10 @@ export function createApp(overrides: AppOverrides = {}) {
 
   app.use(express.json({ limit: "10mb" }));
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, runtime: "node" });
+  });
+  app.get("/api/runtime", (_req, res) => {
+    res.json(createRuntimeProfile("node"));
   });
 
   app.use("/api", createRemoteRouter(remoteControl));

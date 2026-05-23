@@ -12,11 +12,13 @@ export type BusyAction =
   | "signal-start"
   | "signal-stop"
   | "browser-remote-start"
+  | "reconnect"
   | "signal-events"
   | null;
 
 export type SdpTransportMode = "gzip" | "plain";
 export type ConnectionRouteMode = "auto" | "relay";
+export type RemoteStageViewMode = "fit" | "fill";
 
 export type RoomJoinContext = {
   deviceId: string;

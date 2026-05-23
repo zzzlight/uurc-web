@@ -1,5 +1,11 @@
 import { RemoteSignalSession } from "./signalSession";
 import type { RemoteSignalSession as RemoteSignalSessionClass } from "./signalSession";
+import { createRuntimeProfile } from "@uurc/shared/runtimeProfile";
+import {
+  assertAllowedUuApiPath,
+  parseMaybeJsonBody,
+  sanitizeUuProxyHeaders,
+} from "@uurc/shared/uuProxy";
 
 const API_BASE = "https://api.nrd.nie.163.com";
 
@@ -17,6 +23,9 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/api/health") {
       return json({ ok: true, runtime: "cloudflare-worker" });
+    }
+    if (url.pathname === "/api/runtime") {
+      return json(createRuntimeProfile("cloudflare-worker"));
     }
     if (url.pathname === "/api/proxy/uu" && request.method === "POST") {
       return handleUuProxy(request);
@@ -36,10 +45,10 @@ async function handleUuProxy(request: Request): Promise<Response> {
     if (!method || !path) {
       return json({ error: "method and path are required" }, { status: 400 });
     }
-    assertAllowedApiPath(path);
+    assertAllowedUuApiPath(path);
     const response = await fetch(`${API_BASE}${path}`, {
       method,
-      headers: sanitizeProxyHeaders(body.headers),
+      headers: sanitizeUuProxyHeaders(body.headers),
       body: body.body === undefined ? undefined : JSON.stringify(body.body),
     });
     const responseText = await response.text();
@@ -48,7 +57,7 @@ async function handleUuProxy(request: Request): Promise<Response> {
       status: response.status,
       statusText: response.statusText,
       headers: Object.fromEntries(response.headers.entries()),
-      body: parseMaybeJson(responseText, contentType),
+      body: parseMaybeJsonBody(responseText, contentType),
     });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
@@ -90,30 +99,6 @@ async function handleRemoteApi(request: Request, env: Env): Promise<Response> {
   return json({ error: "Not found" }, { status: 404 });
 }
 
-function assertAllowedApiPath(path: string): void {
-  if (!path.startsWith("/api/v1/")) {
-    throw new Error(`Unsupported UU API path: ${path}`);
-  }
-  if (/^https?:\/\//i.test(path) || path.includes("..")) {
-    throw new Error(`Unsafe UU API path: ${path}`);
-  }
-}
-
-function sanitizeProxyHeaders(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {};
-  const headers: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (typeof raw === "string" && isForwardableHeader(key)) {
-      headers[key] = raw;
-    }
-  }
-  return headers;
-}
-
-function isForwardableHeader(name: string): boolean {
-  return !["host", "connection", "content-length", "transfer-encoding"].includes(name.toLowerCase());
-}
-
 async function readJson(request: Request): Promise<JsonRecord> {
   const body = await request.json().catch(() => ({}));
   return isRecord(body) ? body : {};
@@ -123,16 +108,6 @@ function json(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json; charset=utf-8");
   return new Response(JSON.stringify(body), { ...init, headers });
-}
-
-function parseMaybeJson(text: string, contentType: string): unknown {
-  if (!text) return null;
-  if (!contentType.includes("application/json")) return text;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
 }
 
 function isRecord(value: unknown): value is JsonRecord {

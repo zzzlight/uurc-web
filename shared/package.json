@@ -36,6 +36,14 @@
       "types": "./dist/roomConfig.d.ts",
       "default": "./dist/roomConfig.js"
     },
+    "./runtimeProfile": {
+      "types": "./dist/runtimeProfile.d.ts",
+      "default": "./dist/runtimeProfile.js"
+    },
+    "./uuProxy": {
+      "types": "./dist/uuProxy.d.ts",
+      "default": "./dist/uuProxy.js"
+    },
     "./types": {
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"

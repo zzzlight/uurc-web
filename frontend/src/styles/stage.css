@@ -48,6 +48,14 @@
   background: var(--stage);
 }
 
+.remote-stage-fill .remote-video {
+  object-fit: cover;
+}
+
+.remote-stage-fit .remote-video {
+  object-fit: contain;
+}
+
 .stage-badge {
   position: absolute;
   left: 12px;

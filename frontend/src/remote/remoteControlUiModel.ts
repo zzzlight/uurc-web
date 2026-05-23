@@ -55,6 +55,7 @@ function positiveNumber(value: number | undefined): number {
 
 export function getNextAction(input: {
   busy: BusyAction;
+  browserConnectionRecoverable: boolean;
   browserStage: BrowserRemoteSessionState["stage"];
   controlChannelState: RTCDataChannelState;
   deviceTotal: number;
@@ -129,6 +130,13 @@ export function getNextAction(input: {
       label: "等待画面",
       detail: "等待受控端返回画面",
       disabled: true,
+    };
+  }
+  if (input.browserConnectionRecoverable) {
+    return {
+      label: "重新连接",
+      detail: "复用当前房间并重建浏览器远控会话",
+      disabled: input.busy !== null,
     };
   }
   if (!input.inputControlActive && input.controlChannelState === "open") {

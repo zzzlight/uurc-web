@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getRuntimeProfile,
   getRemoteSignalDiagnostics,
   getRemoteSignalEvents,
   sendRemoteSignalControl,
@@ -34,6 +35,16 @@ describe("frontend API client remote signal helpers", () => {
         calls.push({ path: String(input), init });
         if (String(input) === "/api/remote/signal/events") {
           return jsonResponse([{ id: 1, direction: "inbound", event: "soac", receivedAt: "now", payload: [] }]);
+        }
+        if (String(input) === "/api/runtime") {
+          return jsonResponse({
+            ok: true,
+            runtime: "node",
+            uuProxyPath: "/api/proxy/uu",
+            signalGateway: "node-socket-io",
+            remoteApiBase: "/api/remote",
+            wispProxy: true,
+          });
         }
         if (String(input) === "/api/remote/signal/diagnostics") {
           return jsonResponse({
@@ -70,6 +81,11 @@ describe("frontend API client remote signal helpers", () => {
       }),
     );
 
+    await expect(getRuntimeProfile()).resolves.toMatchObject({
+      runtime: "node",
+      uuProxyPath: "/api/proxy/uu",
+      remoteApiBase: "/api/remote",
+    });
     await expect(getRemoteSignalEvents()).resolves.toHaveLength(1);
     await expect(getRemoteSignalDiagnostics()).resolves.toMatchObject({
       stage: "answer_missing",
@@ -94,6 +110,7 @@ describe("frontend API client remote signal helpers", () => {
     });
 
     expect(calls.map((call) => [call.path, call.init?.method ?? "GET", call.init?.body ? JSON.parse(String(call.init.body)) : null])).toEqual([
+      ["/api/runtime", "GET", null],
       ["/api/remote/signal/events", "GET", null],
       ["/api/remote/signal/diagnostics", "GET", null],
       [

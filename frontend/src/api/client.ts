@@ -14,6 +14,7 @@ import type {
   RoomAppFlagUpdateResult,
   RoomJoinUpstreamSummary,
   RoomJoinResult,
+  RuntimeProfile,
   UuDeviceGroups,
   UuResponse,
 } from "@uurc/shared/types";
@@ -35,6 +36,10 @@ import {
 
 export async function getAuthStatus(): Promise<AuthStatus> {
   return getAuthStatusFromFrontend();
+}
+
+export async function getRuntimeProfile(): Promise<RuntimeProfile> {
+  return apiRequest<RuntimeProfile>("/api/runtime");
 }
 
 export async function clearAuthState(): Promise<AuthStatus> {

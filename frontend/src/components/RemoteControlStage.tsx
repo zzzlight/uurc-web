@@ -19,6 +19,7 @@ export function RemoteControlStage({
   primaryRemoteVideoId,
   remoteBootstrap,
   remoteStageRef,
+  remoteStageViewMode,
   remoteVideoCount,
   remoteVideoStreams,
   roomResponseReady,
@@ -41,6 +42,7 @@ export function RemoteControlStage({
   | "primaryRemoteVideoId"
   | "remoteBootstrap"
   | "remoteStageRef"
+  | "remoteStageViewMode"
   | "remoteVideoCount"
   | "remoteVideoStreams"
   | "roomResponseReady"
@@ -50,7 +52,7 @@ export function RemoteControlStage({
   return (
     <div
       ref={remoteStageRef}
-      className={`remote-stage control-remote-stage ${inputControlActive ? "remote-stage-interactive" : ""}`}
+      className={`remote-stage control-remote-stage remote-stage-${remoteStageViewMode} ${inputControlActive ? "remote-stage-interactive" : ""}`}
       role="application"
       aria-label="远控画面"
       tabIndex={0}

@@ -39,16 +39,53 @@
   }
 
   .control-command-bar {
-    position: static;
-    flex-wrap: wrap;
-    justify-content: center;
+    left: 12px;
+    width: calc(100% - 24px);
     max-width: none;
-    margin-bottom: 8px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: visible;
     transform: none;
+    scrollbar-width: none;
+  }
+
+  .control-command-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .connection-recovery-strip {
+    flex-basis: 260px;
+    max-width: 260px;
+  }
+
+  .shortcut-menu-panel {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  .shortcut-menu-grid {
+    grid-template-columns: 1fr;
   }
 
   .remote-input-row.compact {
-    width: 100%;
+    flex-basis: 280px;
+    width: 280px;
+  }
+
+  .control-drawer-row {
+    margin-top: 8px;
+  }
+
+  .remote-input-row:not(.compact) {
+    grid-template-columns: 1fr;
+  }
+
+  .control-stage-layout {
+    gap: 10px;
   }
 
   .button-row.three,
@@ -58,7 +95,6 @@
   .inline-fields,
   .join-mode-control,
   .segmented-control,
-  .remote-input-row,
   .readiness-steps,
   .route-options,
   .transport-actions {

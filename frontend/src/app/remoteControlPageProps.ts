@@ -4,6 +4,7 @@ import type {
   RemoteControlBootstrap,
   RemoteSignalGatewayEvent,
   RemoteSignalReadinessDiagnostics,
+  RuntimeProfile,
   UuDevice,
   UuParticipantInfo,
 } from "@uurc/shared/types";
@@ -12,10 +13,12 @@ import type {
   BrowserRemoteSessionState,
   BrowserRemoteVideoElementSample,
 } from "../remote/browserRemoteSession.js";
+import type { RemoteShortcut } from "../remote/remoteShortcuts.js";
 import type {
   BusyAction,
   ConnectionRouteMode,
   NextAction,
+  RemoteStageViewMode,
   RemoteVideoStream,
   SdpTransportMode,
 } from "./remoteControlTypes.js";
@@ -29,6 +32,7 @@ export interface RemoteControlPageProps {
   browserStageLabel: string;
   busy: BusyAction;
   canDisconnectRemote: boolean;
+  canReconnectRemote: boolean;
   canSendRemoteText: boolean;
   candidatePairSummary: string;
   connectionPathLabel: string;
@@ -50,7 +54,9 @@ export interface RemoteControlPageProps {
   normalJoinTakeoverHint: string;
   primaryRemoteVideoId: string;
   remoteBootstrap: RemoteControlBootstrap | null;
+  remoteRecoveryLabel: string;
   remoteStageRef: RefObject<HTMLDivElement | null>;
+  remoteStageViewMode: RemoteStageViewMode;
   remoteTextInput: string;
   remoteVideoCount: number;
   remoteVideoStreams: RemoteVideoStream[];
@@ -61,6 +67,7 @@ export interface RemoteControlPageProps {
   roomReleaseDetail: string;
   roomReleaseLabel: string;
   roomResponseReady: boolean;
+  runtimeProfile: RuntimeProfile | null;
   roomRequiresTakeover: boolean;
   sdpTransportLabel: string;
   sdpTransportMode: SdpTransportMode;
@@ -85,6 +92,7 @@ export interface RemoteControlPageProps {
   onConnectionRouteModeChange: (mode: ConnectionRouteMode) => void;
   onForceJoinChange: (forceJoin: boolean) => void;
   onNextAction: () => void;
+  onReconnectRemote: () => void;
   onRemoteStageKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   onRemoteStageKeyUp: (event: KeyboardEvent<HTMLDivElement>) => void;
   onRemoteStagePointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
@@ -92,6 +100,7 @@ export interface RemoteControlPageProps {
   onRemoteStagePointerMove: (event: PointerEvent<HTMLDivElement>) => void;
   onRemoteStagePointerUp: (event: PointerEvent<HTMLDivElement>) => void;
   onRemoteStageWheel: (event: WheelEvent<HTMLDivElement>) => void;
+  onRemoteShortcut: (shortcut: RemoteShortcut) => void;
   onRemoteTextInputChange: (value: string) => void;
   onRemoteVideoSample: (videoId: string, sample: BrowserRemoteVideoElementSample) => void;
   onReturnToDevices: () => void;
@@ -100,7 +109,9 @@ export interface RemoteControlPageProps {
   onSignalServerIndexChange: (index: number) => void;
   onStartBrowserRemote: () => void;
   onStartSignalGateway: () => void;
+  onStageViewModeChange: (mode: RemoteStageViewMode) => void;
   onStopSignalGateway: () => void;
   onSyncSignalEvents: () => void;
   onToggleInputControl: () => void;
+  onToggleFullscreen: () => void;
 }

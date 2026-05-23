@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -79,6 +79,7 @@ describe("App console", () => {
     ];
     TestPeerConnection.lastConfiguration = null;
     TestPeerConnection.sentByLabel = {};
+    TestPeerConnection.channels = {};
     TestPeerConnection.closed = false;
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -99,9 +100,9 @@ describe("App console", () => {
     render(<App />);
 
     await screen.findByText("未登录");
-    expect(screen.getByRole("heading", { name: "登录 UU 远程" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/login");
-    expect(screen.getByText("手机号登录")).toBeInTheDocument();
+    expect(screen.getByLabelText("用手机号登录")).toBeInTheDocument();
     expect(screen.getByText("导入登录态")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "远控画面" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
@@ -349,7 +350,7 @@ describe("App console", () => {
 
     await user.click(screen.getByRole("button", { name: "退出登录" }));
 
-    await screen.findByRole("heading", { name: "登录 UU 远程" });
+    await screen.findByRole("heading", { name: "登录" });
     expect(window.localStorage.getItem("uurc.loginState")).toBeNull();
     expect(screen.getByText("导入登录态")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
@@ -736,6 +737,83 @@ describe("App console", () => {
     expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(0);
   });
 
+  it("surfaces one-click reconnect after the control channel drops and reuses the current room", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+
+    TestPeerConnection.closeDataChannel("CONTROL_DATA_CHANNEL");
+
+    await screen.findByText("控制通道已断开");
+    const reconnectButton = screen.getByRole("button", { name: "重新连接" });
+    expect(reconnectButton).toBeEnabled();
+
+    await user.click(reconnectButton);
+
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(2);
+    });
+    expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
+    expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
+  });
+
+  it("provides a draggable remote toolbar with view mode, fullscreen, and shortcut actions", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const requestFullscreen = vi.fn(async () => {});
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    await user.click(screen.getByRole("button", { name: "启用输入控制" }));
+
+    const stage = screen.getByRole("application", { name: "远控画面" }) as HTMLDivElement;
+    stage.requestFullscreen = requestFullscreen;
+    const toolbar = screen.getByLabelText("远控主流程");
+    const dragHandle = screen.getByRole("button", { name: "拖动工具栏" });
+    expect(dragHandle).toBeInTheDocument();
+    vi.spyOn(toolbar.parentElement as HTMLElement, "getBoundingClientRect").mockReturnValue(
+      rectFrom({ left: 0, top: 0, width: 900, height: 500 }),
+    );
+    vi.spyOn(toolbar, "getBoundingClientRect").mockReturnValue(
+      rectFrom({ left: 300, top: 20, width: 420, height: 52 }),
+    );
+    fireEvent.pointerDown(dragHandle, { pointerId: 1, clientX: 320, clientY: 40 });
+    fireEvent.pointerMove(dragHandle, { pointerId: 1, clientX: 430, clientY: 110 });
+    fireEvent.pointerUp(dragHandle, { pointerId: 1, clientX: 430, clientY: 110 });
+    await waitFor(() => {
+      expect(toolbar).toHaveStyle({ left: "410px", top: "90px", transform: "none" });
+    });
+    expect(stage).toHaveClass("remote-stage-fit");
+
+    await user.click(screen.getByRole("button", { name: "填充画面" }));
+    expect(stage).toHaveClass("remote-stage-fill");
+    await user.click(screen.getByRole("button", { name: "适应画面" }));
+    expect(stage).toHaveClass("remote-stage-fit");
+
+    await user.click(screen.getByRole("button", { name: "全屏" }));
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    const sentBefore = TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length ?? 0;
+    await user.click(screen.getByText("快捷键"));
+    await user.click(screen.getByRole("button", { name: "Ctrl Alt Del" }));
+    expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(sentBefore);
+    expect(screen.getByRole("button", { name: "Cmd Opt Esc" })).toBeInTheDocument();
+  });
+
   it("shows a first-class disconnect action that closes the browser remote session", async () => {
     vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
     currentParticipants = [];
@@ -858,6 +936,17 @@ async function handleFetch(input: string | URL | Request, init?: RequestInit): P
   }
 
   requestLog.push({ method, path, body });
+
+  if (path === "/api/runtime") {
+    return jsonResponse({
+      ok: true,
+      runtime: "node",
+      uuProxyPath: "/api/proxy/uu",
+      signalGateway: "node-socket-io",
+      remoteApiBase: "/api/remote",
+      wispProxy: true,
+    });
+  }
 
   if (path === "/api/remote/signal/start" && method === "POST") {
     expect(body).toMatchObject({ gzipSdp: false });
@@ -1174,6 +1263,17 @@ function seedLoginState(status: typeof authReady): void {
   );
 }
 
+function rectFrom(input: { left: number; top: number; width: number; height: number }): DOMRect {
+  return {
+    ...input,
+    x: input.left,
+    y: input.top,
+    right: input.left + input.width,
+    bottom: input.top + input.height,
+    toJSON: () => input,
+  } as DOMRect;
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -1184,6 +1284,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 class TestPeerConnection {
   static lastConfiguration: RTCConfiguration | null = null;
   static sentByLabel: Record<string, number[]> = {};
+  static channels: Record<string, RTCDataChannel> = {};
   static closed = false;
   localDescription: RTCSessionDescriptionInit | null = null;
   remoteDescription: RTCSessionDescriptionInit | null = null;
@@ -1195,7 +1296,7 @@ class TestPeerConnection {
   }
 
   createDataChannel(label: string): RTCDataChannel {
-    return {
+    const channel = {
       label,
       readyState: "open",
       binaryType: "arraybuffer",
@@ -1214,6 +1315,8 @@ class TestPeerConnection {
       },
       close: () => {},
     } as unknown as RTCDataChannel;
+    TestPeerConnection.channels[label] = channel;
+    return channel;
   }
 
   addTransceiver(_kind: "audio" | "video", _init?: RTCRtpTransceiverInit): RTCRtpTransceiver {
@@ -1259,6 +1362,13 @@ class TestPeerConnection {
 
   close(): void {
     TestPeerConnection.closed = true;
+  }
+
+  static closeDataChannel(label: string): void {
+    const channel = TestPeerConnection.channels[label];
+    if (!channel) throw new Error(`Missing data channel ${label}`);
+    Object.defineProperty(channel, "readyState", { value: "closed", configurable: true });
+    channel.onclose?.(new Event("close"));
   }
 }
 
