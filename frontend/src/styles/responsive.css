@@ -1,5 +1,8 @@
 @media (max-width: 1180px) {
   .device-home {
+    grid-template-areas:
+      "devices"
+      "account";
     grid-template-columns: 1fr;
   }
 
@@ -29,6 +32,23 @@
   .login-actions,
   .device-home {
     grid-template-columns: 1fr;
+  }
+
+  .control-remote-stage {
+    height: clamp(320px, 58vh, 560px);
+  }
+
+  .control-command-bar {
+    position: static;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: none;
+    margin-bottom: 8px;
+    transform: none;
+  }
+
+  .remote-input-row.compact {
+    width: 100%;
   }
 
   .button-row.three,

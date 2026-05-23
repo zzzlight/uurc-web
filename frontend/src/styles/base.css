@@ -119,25 +119,19 @@ button:focus-visible {
   border-color: var(--danger);
 }
 
-.icon-button {
-  width: 36px;
-  padding: 0;
-  color: var(--text-muted);
-}
-
-.icon-button:hover:not(:disabled) {
+.toolbar-button {
+  background: var(--surface);
+  border-color: var(--border);
   color: var(--text);
 }
 
-.toolbar-button {
-  background: var(--text);
-  border-color: var(--text);
-  color: #ffffff;
+.toolbar-button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
 }
 
-.toolbar-button:hover:not(:disabled) {
-  background: #262626;
-  border-color: #262626;
+.toolbar-button svg {
+  color: var(--text-muted);
 }
 
 input,

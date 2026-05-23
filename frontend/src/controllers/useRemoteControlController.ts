@@ -46,7 +46,7 @@ import {
   startRemoteSignalGateway,
   stopRemoteSignalGateway,
 } from "../api/client.js";
-import type { RemoteControlPageProps } from "../components/RemoteControlPage.js";
+import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 import { pickControllableDesktop } from "../devices/deviceSummary.js";
 import { BrowserRemoteSession, type BrowserRemoteSessionState, type BrowserRemoteVideoElementSample } from "../remote/browserRemoteSession.js";
 import {

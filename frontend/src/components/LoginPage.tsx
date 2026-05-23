@@ -1,11 +1,7 @@
-import {
-  ClipboardCheck,
-  LoaderCircle,
-  LogIn,
-  Send,
-  TerminalSquare,
-} from "lucide-react";
+import { TerminalSquare } from "lucide-react";
 
+import { LoginForm } from "./LoginForm.js";
+import { LoginImportPanel } from "./LoginImportPanel.js";
 import { StatusPill } from "./StatusPill.js";
 
 export function LoginPage({
@@ -63,88 +59,27 @@ export function LoginPage({
 
       <section className="login-layout">
         <div className="login-actions">
-          <section className="form-section auth-card" aria-label="用手机号登录">
-            <h2>登录</h2>
-            <div className="inline-fields">
-              <label htmlFor="region-code">
-                <span>区号</span>
-                <input
-                  id="region-code"
-                  name="regionCode"
-                  aria-label="区号"
-                  inputMode="numeric"
-                  value={regionCode}
-                  onChange={(event) => onRegionCodeChange(event.target.value)}
-                  placeholder="86"
-                />
-              </label>
-              <label htmlFor="mobile-number">
-                <span>手机号</span>
-                <input
-                  id="mobile-number"
-                  name="mobile"
-                  aria-label="手机号"
-                  inputMode="tel"
-                  value={mobile}
-                  onChange={(event) => onMobileChange(event.target.value)}
-                  placeholder="13800000000"
-                />
-              </label>
-            </div>
-            {codeRequested ? (
-              <label htmlFor="sms-code">
-                <span>验证码</span>
-                <input
-                  id="sms-code"
-                  name="smsCode"
-                  aria-label="短信验证码"
-                  inputMode="numeric"
-                  value={smsCode}
-                  onChange={(event) => onSmsCodeChange(event.target.value)}
-                  placeholder="123456"
-                />
-              </label>
-            ) : null}
-            {codeRequested ? (
-              <div className="login-button-row">
-                <button className="primary-action-button" onClick={onMobileLogin} disabled={!canLogin}>
-                  {busy === "mobile-login" ? <LoaderCircle className="spin" size={17} /> : <LogIn size={17} />}
-                  登录
-                </button>
-                <button onClick={onSendMobileCode} disabled={!canSubmitMobile}>
-                  {busy === "send-mobile-code" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}
-                  重新获取
-                </button>
-              </div>
-            ) : (
-              <button className="primary-action-button" onClick={onSendMobileCode} disabled={!canSubmitMobile}>
-                {busy === "send-mobile-code" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}
-                获取验证码
-              </button>
-            )}
-            {loginNotice ? <p className="operation-note">{loginNotice}</p> : null}
-          </section>
-
-          <details className="identity-section auth-card login-import" aria-label="导入已有登录态">
-            <summary>导入登录态</summary>
-            <label className="field-label" htmlFor="auth-json">
-              登录态 JSON
-            </label>
-            <textarea
-              id="auth-json"
-              name="auth-json"
-              value={authJson}
-              onChange={(event) => onAuthJsonChange(event.target.value)}
-              spellCheck={false}
-              placeholder='{"token":"...","userId":"...","deviceId":"..."}'
-            />
-            <div className="button-row account-actions">
-              <button onClick={onImport} disabled={!authJson.trim() || busy !== null}>
-                {busy === "import" ? <LoaderCircle className="spin" size={17} /> : <ClipboardCheck size={17} />}
-                导入登录态 JSON
-              </button>
-            </div>
-          </details>
+          <LoginForm
+            busy={busy}
+            canLogin={canLogin}
+            canSubmitMobile={canSubmitMobile}
+            codeRequested={codeRequested}
+            loginNotice={loginNotice}
+            mobile={mobile}
+            regionCode={regionCode}
+            smsCode={smsCode}
+            onMobileChange={onMobileChange}
+            onMobileLogin={onMobileLogin}
+            onRegionCodeChange={onRegionCodeChange}
+            onSendMobileCode={onSendMobileCode}
+            onSmsCodeChange={onSmsCodeChange}
+          />
+          <LoginImportPanel
+            authJson={authJson}
+            busy={busy}
+            onAuthJsonChange={onAuthJsonChange}
+            onImport={onImport}
+          />
         </div>
       </section>
     </main>

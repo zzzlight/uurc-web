@@ -4,11 +4,16 @@
   padding: 24px 0 40px;
 }
 
-.product-shell,
-.control-shell {
-  width: min(1680px, calc(100vw - 48px));
+.product-shell {
+  width: min(1180px, calc(100vw - 48px));
   margin: 0 auto;
   padding: 28px 0 48px;
+}
+
+.control-shell {
+  width: min(1440px, calc(100vw - 48px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
 }
 
 .auth-product-shell {
@@ -129,20 +134,19 @@
 
 .device-home {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
-  gap: 20px;
+  grid-template-areas: "devices account";
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+  gap: 16px;
   align-items: start;
 }
 
-.device-home-main {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
+.device-home > .devices-panel {
+  grid-area: devices;
 }
 
 .account-drawer {
-  position: sticky;
-  top: 20px;
+  grid-area: account;
+  min-width: 0;
 }
 
 .control-stage-layout {
@@ -150,6 +154,14 @@
   gap: 12px;
 }
 
+.control-stage-frame {
+  position: relative;
+  min-width: 0;
+}
+
 .control-remote-stage {
-  min-height: min(72vh, 760px);
+  width: 100%;
+  height: clamp(420px, calc(100vh - 178px), 760px);
+  min-height: 360px;
+  aspect-ratio: auto;
 }
