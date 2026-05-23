@@ -49,11 +49,7 @@ export function LoginPage({
     <main className="product-shell auth-product-shell">
       <header className="product-topbar">
         <div className="brand-block">
-          <span className="product-mark">UR</span>
-          <div>
-            <p className="eyebrow">UU Remote Web</p>
-            <h1>登录 UU 远程</h1>
-          </div>
+          <span className="wordmark">UU Remote<span className="wordmark-sub">Web</span></span>
         </div>
         <StatusPill state="warn">未登录</StatusPill>
       </header>
@@ -66,14 +62,9 @@ export function LoginPage({
       ) : null}
 
       <section className="login-layout">
-        <div className="login-copy">
-          <span className="product-mark large">UR</span>
-          <h2>UU 远程</h2>
-        </div>
-
         <div className="login-actions">
           <section className="form-section auth-card" aria-label="用手机号登录">
-            <h2>手机号登录</h2>
+            <h2>登录</h2>
             <div className="inline-fields">
               <label htmlFor="region-code">
                 <span>区号</span>

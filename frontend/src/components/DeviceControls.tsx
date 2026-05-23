@@ -1,4 +1,4 @@
-import { UsersRound } from "lucide-react";
+import { ChevronRight, UsersRound } from "lucide-react";
 
 import type { UuDevice } from "@uurc/shared/types";
 
@@ -37,7 +37,12 @@ export function DeviceSection({
                   <small>{getDeviceControlLabel(device)}</small>
                   {device.deviceId === currentDeviceId ? <small>当前登录态</small> : null}
                 </span>
-                {canConnect ? <span className="device-connect-label">连接</span> : null}
+                {canConnect ? (
+                  <span className="device-connect-link">
+                    连接
+                    <ChevronRight size={14} />
+                  </span>
+                ) : null}
               </>
             );
 

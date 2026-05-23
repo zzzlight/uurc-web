@@ -49,10 +49,8 @@ export function DeviceListPage({
     <main className="product-shell">
       <header className="product-topbar">
         <div className="brand-block">
-          <span className="product-mark">UR</span>
-          <div>
-            <h1>我的设备</h1>
-          </div>
+          <span className="wordmark">UU Remote<span className="wordmark-sub">Web</span></span>
+          <h1>我的设备</h1>
         </div>
         <div className="topbar-actions">
           <StatusPill state="ready">已登录</StatusPill>
@@ -119,7 +117,7 @@ export function DeviceListPage({
               </button>
             </div>
             {authJson.trim() ? (
-              <details className="identity-details export-details" open>
+              <details className="identity-details export-details">
                 <summary>登录态备份</summary>
                 <label className="field-label" htmlFor="auth-json-export">
                   登录态 JSON

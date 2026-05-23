@@ -1,0 +1,60 @@
+@media (max-width: 1180px) {
+  .device-home {
+    grid-template-columns: 1fr;
+  }
+
+  .account-drawer {
+    position: static;
+  }
+}
+
+@media (max-width: 780px) {
+  .app-shell,
+  .product-shell,
+  .control-shell,
+  .auth-product-shell {
+    width: min(100vw - 24px, 760px);
+    padding-top: 20px;
+  }
+
+  .topbar,
+  .product-topbar,
+  .control-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    display: flex;
+  }
+
+  .control-drawer-row,
+  .login-actions,
+  .device-home {
+    grid-template-columns: 1fr;
+  }
+
+  .button-row.three,
+  .account-actions,
+  .input-guard,
+  .identity-summary div,
+  .inline-fields,
+  .join-mode-control,
+  .segmented-control,
+  .remote-input-row,
+  .readiness-steps,
+  .route-options,
+  .transport-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .identity-summary div {
+    display: block;
+  }
+
+  .identity-summary span {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+}

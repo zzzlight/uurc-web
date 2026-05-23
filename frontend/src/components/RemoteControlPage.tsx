@@ -128,7 +128,6 @@ export function RemoteControlPage(props: RemoteControlPageProps) {
           返回设备列表
         </button>
         <div>
-          <p className="eyebrow">远控会话</p>
           <h1>{props.selectedDevice?.alias ?? "远控画面"}</h1>
         </div>
         <div className="topbar-actions">
