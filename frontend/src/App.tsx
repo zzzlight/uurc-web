@@ -18,6 +18,14 @@ function AppRoutes() {
   const controller = useRemoteControlController();
   const loginPage = <LoginPage {...controller.loginPageProps} />;
 
+  if (controller.authLoading) {
+    return (
+      <main className="product-shell auth-product-shell" aria-label="正在恢复登录态">
+        <p className="empty-text">正在恢复登录态...</p>
+      </main>
+    );
+  }
+
   if (!controller.loggedIn) {
     return (
       <Routes>

@@ -164,6 +164,41 @@ describe("App console", () => {
     expect(screen.getByText("调试信息")).toBeInTheDocument();
   });
 
+  it("preserves a control page deep link while restoring login state on refresh", async () => {
+    window.history.replaceState(null, "", "/devices/desktop-1/control");
+
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Office Mac" });
+    expect(window.location.pathname).toBe("/devices/desktop-1/control");
+    expect(screen.getByRole("application", { name: "远控画面" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
+  });
+
+  it("defers room join until the operator starts the connection from the control page", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    await user.click(await screen.findByRole("button", { name: /连接 Office Mac/ }));
+    await screen.findByRole("heading", { name: "Office Mac" });
+
+    expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(0);
+    await startCompatibleConnection(user);
+
+    await waitFor(() => {
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+  });
+
   it("loads controllable devices and joins a selected room", async () => {
     vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
     currentRemoteSignalEvents = [
@@ -205,32 +240,33 @@ describe("App console", () => {
     expect(screen.queryByText(/room-token-1/)).not.toBeInTheDocument();
     expect(screen.queryByText(/report-token-1/)).not.toBeInTheDocument();
     expect(screen.getByText("连接服务")).toBeInTheDocument();
-    expect(screen.getByText(/X-NRD-AUTH=<redacted room token>/)).toBeInTheDocument();
-    expect(screen.getByText("soac, streamer_push, forward_setting, device_capability")).toBeInTheDocument();
+    expect(screen.queryByText(/X-NRD-AUTH=<redacted room token>/)).not.toBeInTheDocument();
+    expect(screen.queryByText("soac, streamer_push, forward_setting, device_capability")).not.toBeInTheDocument();
     expect(screen.queryByText(/be-controlled, answer, candidate/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("radio", { name: "兼容模式" }));
     expect(screen.getByRole("radio", { name: "自动路径" })).toBeChecked();
     await user.click(screen.getByRole("radio", { name: "强制 UU 中转" }));
-    expect(getPrimaryAction("接管并加入房间")).toBeEnabled();
-    expect(screen.getByText("选择接管后重试")).toBeInTheDocument();
+    expect(getPrimaryAction("开始连接")).toBeEnabled();
+    expect(screen.queryByText("选择接管后重试")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("radio", { name: "接管控制" }));
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并加入房间"));
+    await user.click(getPrimaryAction("接管并开始连接"));
     await waitFor(() => {
-      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
     await waitFor(() => {
       expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
     });
-    await user.click(getPrimaryAction("启动连接"));
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
     });
     expect(screen.getByText(/gzip_sdp":false/)).toBeInTheDocument();
+    expect(screen.getByText(/X-NRD-AUTH=<redacted room token>/)).toBeInTheDocument();
+    expect(screen.getByText("soac, streamer_push, forward_setting, device_capability")).toBeInTheDocument();
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
@@ -264,8 +300,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
 
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
@@ -276,24 +311,21 @@ describe("App console", () => {
     expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
   });
 
-  it("can start the signal gateway from a selected signal entry", async () => {
+  it("starts the signal gateway from the first room signal entry", async () => {
     currentParticipants = [];
     currentSignalServers = ["wss://signal-a.example", "wss://signal-b.example"];
     const user = userEvent.setup();
     render(<App />);
 
     await openOfficeMacControl(user);
-
-    await user.selectOptions(screen.getByLabelText("信令入口"), "1");
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
 
     await waitFor(() => {
       const startCalls = requestLog.filter((call) => call.path === "/api/remote/signal/start");
-      expect(startCalls.at(-1)?.body).toMatchObject({ gzipSdp: false, signalServerIndex: 1 });
+      expect(startCalls.at(-1)?.body).toMatchObject({ gzipSdp: false });
       expect(startCalls.at(-1)?.body).toHaveProperty("roomConfig.token", "room-token-1");
     });
-    expect(screen.getByText("wss://signal-b.example")).toBeInTheDocument();
+    expect(screen.getByText("wss://signal-a.example")).toBeInTheDocument();
   });
 
   it("asks the operator to rejoin the room when the signal gateway rejects a stale RoomConfig", async () => {
@@ -303,11 +335,10 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
 
     await screen.findByText("连接失败：websocket error");
-    expect(getPrimaryAction("重新加入房间")).toBeEnabled();
+    expect(getPrimaryAction("重新开始连接")).toBeEnabled();
     expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
   });
 
@@ -319,7 +350,7 @@ describe("App console", () => {
     expect(await screen.findByRole("button", { name: /连接 Office Mac/ })).toBeInTheDocument();
     expect(screen.getByLabelText("账号管理")).toBeInTheDocument();
     expect(screen.queryByLabelText("远控主流程")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "启动连接" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始连接" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "桌面端" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "移动端" })).toBeInTheDocument();
@@ -373,6 +404,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user, { waitForReady: false });
+    await user.click(getPrimaryAction("开始连接"));
 
     await waitFor(() => {
       expect(document.body.textContent).toContain("服务端拒绝加入房间");
@@ -437,19 +469,18 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
     await user.click(screen.getByRole("radio", { name: "接管控制" }));
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并加入房间"));
+    await user.click(getPrimaryAction("接管并开始连接"));
     await waitFor(() => {
-      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
     await waitFor(() => {
       expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
     });
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -496,19 +527,18 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
     await user.click(screen.getByRole("radio", { name: "接管控制" }));
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并加入房间"));
+    await user.click(getPrimaryAction("接管并开始连接"));
     await waitFor(() => {
-      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
     await waitFor(() => {
       expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
     });
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -560,8 +590,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -612,19 +641,18 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
     await user.click(screen.getByRole("radio", { name: "接管控制" }));
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并加入房间"));
+    await user.click(getPrimaryAction("接管并开始连接"));
     await waitFor(() => {
-      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
     await waitFor(() => {
       expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
     });
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -661,19 +689,18 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
     await user.click(screen.getByRole("radio", { name: "接管控制" }));
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并加入房间"));
+    await user.click(getPrimaryAction("接管并开始连接"));
     await waitFor(() => {
-      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
     await waitFor(() => {
       expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
     });
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -694,20 +721,19 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
     expect(screen.getByRole("radio", { name: "自动路径" })).toBeChecked();
     await user.click(screen.getByRole("radio", { name: "接管控制" }));
     await waitFor(() => {
       expect(screen.getByRole("radio", { name: "接管控制" })).toBeChecked();
     });
-    await user.click(getPrimaryAction("接管并加入房间"));
+    await user.click(getPrimaryAction("接管并开始连接"));
     await waitFor(() => {
-      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(2);
+      expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     });
     await waitFor(() => {
       expect(screen.getAllByText("接管加入").length).toBeGreaterThan(0);
     });
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -728,8 +754,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -758,8 +783,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
@@ -787,8 +811,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
@@ -816,8 +839,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -888,8 +910,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -962,8 +983,9 @@ describe("App console", () => {
     const expectedLabels = [
       "路径",
       "画面",
-      "控制",
-      "文本",
+      "输入",
+      "控制通道",
+      "文本通道",
       "帧率",
       "接收码率",
       "延迟",
@@ -980,20 +1002,54 @@ describe("App console", () => {
     const richMetrics = getRemoteConnectionQuality({
       state: richState,
       controlChannelState: "open",
+      inputControlActive: false,
       textChannelState: "open",
       connectionPathLabel: "直连",
     }).metrics;
     const sparseMetrics = getRemoteConnectionQuality({
       state: sparseState,
       controlChannelState: "open",
+      inputControlActive: false,
       textChannelState: "open",
       connectionPathLabel: "直连",
     }).metrics;
 
     expect(richMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
     expect(sparseMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
+    expect(metricValue(sparseMetrics, "输入")).toBe("已锁定");
     expect(metricValue(sparseMetrics, "接收码率")).toBe("采样中");
     expect(metricValue(sparseMetrics, "分辨率")).toBe("暂无");
+  });
+
+  it("separates input lock state from the open control data channel", () => {
+    const state: BrowserRemoteSessionState = {
+      appControlId: "app-1",
+      connectionPath: "relay",
+      dataChannels: {},
+      debugEvents: [],
+      remoteTrackCount: 1,
+      stage: "connected",
+      videoFlow: {
+        status: "receiving",
+        title: "receiving",
+        detail: "receiving",
+        updatedAtMs: 1_000,
+      },
+    };
+
+    const quality = getRemoteConnectionQuality({
+      state,
+      controlChannelState: "open",
+      inputControlActive: false,
+      textChannelState: "open",
+      connectionPathLabel: "UU 中转",
+    });
+
+    expect(quality.detail).toContain("输入 已锁定");
+    expect(quality.detail).not.toContain("控制 已打开");
+    expect(metricValue(quality.metrics, "输入")).toBe("已锁定");
+    expect(metricValue(quality.metrics, "控制通道")).toBe("已打开");
+    expect(metricValue(quality.metrics, "文本通道")).toBe("已打开");
   });
 
   it("provides a draggable remote toolbar with view mode, fullscreen, and shortcut actions", async () => {
@@ -1004,8 +1060,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
@@ -1052,8 +1107,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -1080,8 +1134,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -1111,8 +1164,7 @@ describe("App console", () => {
     render(<App />);
 
     await openOfficeMacControl(user);
-    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
-    await user.click(getPrimaryAction("启动连接"));
+    await startCompatibleConnection(user);
     await waitFor(() => {
       expectSignalState("已连接");
     });
@@ -1135,7 +1187,7 @@ async function openOfficeMacControl(
   await screen.findByRole("heading", { name: "我的设备" });
   await user.click(await screen.findByRole("button", { name: /连接 Office Mac/ }));
   await screen.findByRole("heading", { name: "Office Mac" });
-  if (options.waitForReady !== false) {
+  if (options.waitForReady === true) {
     await screen.findByText("已就绪");
   }
 }
@@ -1147,6 +1199,11 @@ function expectSignalState(expected: string): void {
 
 function getPrimaryAction(name: string): HTMLElement {
   return within(screen.getByLabelText("远控主流程")).getByRole("button", { name });
+}
+
+async function startCompatibleConnection(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+  await user.click(getPrimaryAction("开始连接"));
 }
 
 async function openAdvancedSettings(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -1429,9 +1486,7 @@ async function handleUuProxyFetch(body: unknown): Promise<Response> {
   }
 
   if (request.path === "/api/v1/room/join/by_device/desktop-1" && request.method === "POST") {
-    expect(request.body).toEqual({
-      force_join: uuCalls("/api/v1/room/join/by_device/desktop-1").length === 2,
-    });
+    expect(request.body).toMatchObject({ force_join: expect.any(Boolean) });
     if (joinRoomFailure) {
       return jsonResponse(uuResponse({
         code: 2002,

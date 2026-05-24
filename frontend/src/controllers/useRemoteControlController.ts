@@ -292,11 +292,11 @@ export function useRemoteControlController() {
   async function handleOpenDevice(deviceId: string) {
     setSelectedDeviceId(deviceId);
     navigate(`/devices/${encodeURIComponent(deviceId)}/control`);
-    await joinRoomForDevice(deviceId, false);
   }
 
-  async function joinRoomForDevice(deviceId: string, joinWithForce = forceJoin) {
-    if (!deviceId) return;
+  async function joinRoomForDevice(deviceId: string, joinWithForce = forceJoin): Promise<RoomJoinContext | null> {
+    if (!deviceId) return null;
+    let nextContext: RoomJoinContext | null = null;
     await run("join", async () => {
       if (deviceId === authStatus?.deviceId) {
         throw new Error(SELF_DEVICE_BLOCKED_REASON);
@@ -317,13 +317,15 @@ export function useRemoteControlController() {
       setRemoteSignalDiagnostics(null);
       resetBrowserRemoteSession();
       setRemoteBootstrap(joined.roomConfigSummary ? await getRemoteBootstrap() : null);
+      nextContext = context;
     });
+    return nextContext;
   }
 
-  async function handleStartSignalGateway(): Promise<RemoteSignalGatewayStatus | null> {
+  async function handleStartSignalGateway(context = roomJoinContext): Promise<RemoteSignalGatewayStatus | null> {
     let nextStatus: RemoteSignalGatewayStatus | null = null;
     await run("signal-start", async () => {
-      if (!roomJoinContext || roomJoinContext.deviceId !== selectedDeviceId) {
+      if (!context || context.deviceId !== selectedDeviceId) {
         throw new Error("请先加入房间");
       }
       const status = await startRemoteSignalGateway({
@@ -332,7 +334,7 @@ export function useRemoteControlController() {
       });
       nextStatus = status;
       setSignalGatewayStatus(status);
-      setSignalGatewayContext(status.status === "connected" ? roomJoinContext : null);
+      setSignalGatewayContext(status.status === "connected" ? context : null);
       setRemoteSignalDiagnostics(await getRemoteSignalDiagnostics());
     });
     return nextStatus;
@@ -473,7 +475,12 @@ export function useRemoteControlController() {
       return;
     }
     if (!roomJoinedForSelectedDevice || roomRequiresTakeover || signalGatewayState === "error") {
-      await handleJoinRoom(roomRequiresTakeover ? true : forceJoin);
+      const nextContext = await joinRoomForDevice(selectedDeviceId, roomRequiresTakeover ? true : forceJoin);
+      if (!nextContext || (nextContext.occupiedAtJoin && !nextContext.forceJoin)) return;
+      const status = await handleStartSignalGateway(nextContext);
+      if (status?.status === "connected" && typeof RTCPeerConnection !== "undefined") {
+        await handleStartBrowserRemote({ skipReadinessCheck: true });
+      }
       return;
     }
     if (!signalGatewayMatchesRoom) {
@@ -768,6 +775,7 @@ export function useRemoteControlController() {
   const connectionQuality = getRemoteConnectionQuality({
     state: browserRemoteState,
     controlChannelState,
+    inputControlActive,
     textChannelState,
     connectionPathLabel,
   });
@@ -1009,6 +1017,7 @@ export function useRemoteControlController() {
   };
 
   return {
+    authLoading: authStatus === null && busy === "status",
     loggedIn,
     loginPageProps,
     deviceListPageProps,

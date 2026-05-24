@@ -108,35 +108,35 @@ export function getNextAction(input: {
   }
   if (input.roomRequiresTakeover) {
     return {
-      label: "接管并加入房间",
+      label: "接管并开始连接",
       detail: "当前设备已有控制端在线",
       disabled: input.busy !== null,
     };
   }
   if (!input.roomJoinedForSelectedDevice) {
     return {
-      label: input.forceJoin ? "接管并加入房间" : "加入房间",
-      detail: input.forceJoin ? "接管当前控制者并获取配置" : "获取远控房间配置",
+      label: input.forceJoin ? "接管并开始连接" : "开始连接",
+      detail: input.forceJoin ? "接管当前控制者并建立远控" : "加入房间并建立远控",
       disabled: input.busy !== null,
     };
   }
   if (input.signalGatewayErrored) {
     return {
-      label: "重新加入房间",
-      detail: "刷新 RoomConfig 后再连接信令",
+      label: "重新开始连接",
+      detail: "刷新 RoomConfig 并重新建立远控",
       disabled: input.busy !== null,
     };
   }
   if (!input.signalGatewayMatchesRoom) {
     return {
-      label: "启动连接",
-      detail: "连接远控服务",
+      label: "开始连接",
+      detail: "连接远控服务并打开画面",
       disabled: input.busy !== null,
     };
   }
   if (input.browserStage === "idle") {
     return {
-      label: "打开远控画面",
+      label: "开始连接",
       detail: "建立远控画面",
       disabled: input.busy !== null,
     };
@@ -460,6 +460,7 @@ export function formatVideoElement(sample: BrowserRemoteSessionState["videoEleme
 export function getRemoteConnectionQuality(input: {
   state: BrowserRemoteSessionState;
   controlChannelState: RTCDataChannelState;
+  inputControlActive: boolean;
   textChannelState: RTCDataChannelState;
   connectionPathLabel: string;
 }): RemoteConnectionQuality {
@@ -500,29 +501,40 @@ export function getRemoteConnectionQuality(input: {
     return {
       state: "good",
       title: "链路正常",
-      detail: `${input.connectionPathLabel} · 控制 ${formatDataChannelState(input.controlChannelState)} · 文本 ${formatDataChannelState(input.textChannelState)}`,
+      detail: formatConnectionQualityDetail(input),
       metrics,
     };
   }
   return {
     state: "pending",
     title: "等待质量采样",
-    detail: `${input.connectionPathLabel} · 控制 ${formatDataChannelState(input.controlChannelState)} · 文本 ${formatDataChannelState(input.textChannelState)}`,
+    detail: formatConnectionQualityDetail(input),
     metrics,
   };
+}
+
+function formatConnectionQualityDetail(input: {
+  controlChannelState: RTCDataChannelState;
+  inputControlActive: boolean;
+  textChannelState: RTCDataChannelState;
+  connectionPathLabel: string;
+}): string {
+  return `${input.connectionPathLabel} · 输入 ${formatInputControlState(input.inputControlActive, input.controlChannelState)} · 文本通道 ${formatDataChannelState(input.textChannelState)}`;
 }
 
 function buildConnectionQualityMetrics(input: {
   state: BrowserRemoteSessionState;
   controlChannelState: RTCDataChannelState;
+  inputControlActive: boolean;
   textChannelState: RTCDataChannelState;
   connectionPathLabel: string;
 }): RemoteConnectionQualityMetric[] {
   const baseMetrics: RemoteConnectionQualityMetric[] = [
     { label: "路径", value: input.connectionPathLabel },
     { label: "画面", value: formatVideoFlow(input.state) },
-    { label: "控制", value: formatDataChannelState(input.controlChannelState) },
-    { label: "文本", value: formatDataChannelState(input.textChannelState) },
+    { label: "输入", value: formatInputControlState(input.inputControlActive, input.controlChannelState) },
+    { label: "控制通道", value: formatDataChannelState(input.controlChannelState) },
+    { label: "文本通道", value: formatDataChannelState(input.textChannelState) },
   ];
 
   if (input.state.stage !== "connected") return baseMetrics;
@@ -551,6 +563,12 @@ function buildConnectionQualityMetrics(input: {
     { label: "上行余量", value: formatBitrate(pair?.availableOutgoingBitrate) ?? "暂无" },
     { label: "解码器", value: stats?.decoderImplementation ?? "暂无" },
   ];
+}
+
+function formatInputControlState(inputControlActive: boolean, controlChannelState: RTCDataChannelState): string {
+  if (inputControlActive) return "已启用";
+  if (controlChannelState === "open") return "已锁定";
+  return "不可用";
 }
 
 function bitrateFromBytes(bytes: number | undefined, intervalMs: number | undefined): number | undefined {
