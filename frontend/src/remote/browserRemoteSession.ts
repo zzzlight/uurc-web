@@ -181,6 +181,7 @@ export interface BrowserRemoteVideoFlowDelta {
   nackCount?: number;
   firCount?: number;
   freezeCount?: number;
+  sampleIntervalMs?: number;
   candidateBytesReceived?: number;
   candidateBytesSent?: number;
   videoElementFrames?: number;
@@ -268,6 +269,7 @@ export class BrowserRemoteSession {
   private previousStatsSample:
     | {
         inboundVideo?: BrowserRemoteInboundVideoStats;
+        sampledAtMs: number;
         selectedCandidatePair?: BrowserRemoteSelectedCandidatePair;
       }
     | undefined;
@@ -476,13 +478,15 @@ export class BrowserRemoteSession {
     if (!this.peer?.getStats) return this.getState();
 
     const report = await this.peer.getStats();
+    const sampledAtMs = this.now();
     const selectedCandidatePair = readSelectedCandidatePair(report);
     const inboundVideo = readInboundVideoStats(report);
     const videoFlow = diagnoseVideoFlow({
-      nowMs: this.now(),
+      nowMs: sampledAtMs,
       previous: this.previousStatsSample,
       current: {
         inboundVideo,
+        sampledAtMs,
         selectedCandidatePair: selectedCandidatePair.pair,
       },
       previousVideoElement: this.previousVideoElementSample,
@@ -490,6 +494,7 @@ export class BrowserRemoteSession {
     });
     this.previousStatsSample = {
       inboundVideo,
+      sampledAtMs,
       selectedCandidatePair: selectedCandidatePair.pair,
     };
     this.setState({
@@ -534,6 +539,7 @@ export class BrowserRemoteSession {
             previous: this.previousStatsSample,
             current: {
               inboundVideo: this.state.inboundVideo,
+              sampledAtMs: this.now(),
               selectedCandidatePair: this.state.selectedCandidatePair,
             },
             previousVideoElement: this.state.videoElement,
@@ -1092,11 +1098,13 @@ function diagnoseVideoFlow(input: {
   previous:
     | {
         inboundVideo?: BrowserRemoteInboundVideoStats;
+        sampledAtMs: number;
         selectedCandidatePair?: BrowserRemoteSelectedCandidatePair;
       }
     | undefined;
   current: {
     inboundVideo?: BrowserRemoteInboundVideoStats;
+    sampledAtMs: number;
     selectedCandidatePair?: BrowserRemoteSelectedCandidatePair;
   };
   previousVideoElement?: BrowserRemoteVideoElementSample;
@@ -1113,6 +1121,8 @@ function diagnoseVideoFlow(input: {
     nackCount: diffNumber(input.previous?.inboundVideo?.nackCount, input.current.inboundVideo?.nackCount),
     firCount: diffNumber(input.previous?.inboundVideo?.firCount, input.current.inboundVideo?.firCount),
     freezeCount: diffNumber(input.previous?.inboundVideo?.freezeCount, input.current.inboundVideo?.freezeCount),
+    sampleIntervalMs: diffNumber(input.previous?.inboundVideo?.timestampMs, input.current.inboundVideo?.timestampMs) ??
+      diffNumber(input.previous?.sampledAtMs, input.current.sampledAtMs),
     candidateBytesReceived: diffNumber(
       input.previous?.selectedCandidatePair?.bytesReceived,
       input.current.selectedCandidatePair?.bytesReceived,
@@ -1219,6 +1229,7 @@ function formatVideoFlowDelta(delta: BrowserRemoteVideoFlowDelta): string {
     delta.nackCount === undefined || delta.nackCount === 0 ? null : `nack +${delta.nackCount}`,
     delta.firCount === undefined || delta.firCount === 0 ? null : `fir +${delta.firCount}`,
     delta.freezeCount === undefined || delta.freezeCount === 0 ? null : `freeze +${delta.freezeCount}`,
+    delta.sampleIntervalMs === undefined ? null : `interval ${Math.round(delta.sampleIntervalMs)}ms`,
     delta.videoElementFrames === undefined ? null : `video +${delta.videoElementFrames}`,
   ]
     .filter(Boolean)

@@ -5,22 +5,14 @@ import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 export function RemoteConnectionQualityPanel({
   autoReconnectEnabled,
   autoReconnectLabel,
-  connectionPathLabel,
   connectionQuality,
-  controlChannelLabel,
   onAutoReconnectEnabledChange,
-  textChannelLabel,
-  videoFlowLabel,
 }: Pick<
   RemoteControlPageProps,
   | "autoReconnectEnabled"
   | "autoReconnectLabel"
-  | "connectionPathLabel"
   | "connectionQuality"
-  | "controlChannelLabel"
   | "onAutoReconnectEnabledChange"
-  | "textChannelLabel"
-  | "videoFlowLabel"
 >) {
   return (
     <section className={`control-insight-panel quality-${connectionQuality.state}`} aria-label="连接质量">
@@ -33,10 +25,12 @@ export function RemoteConnectionQualityPanel({
       </header>
       <p>{connectionQuality.detail}</p>
       <div className="quality-metrics" aria-label="连接质量指标">
-        <span>路径 {connectionPathLabel}</span>
-        <span>画面 {videoFlowLabel}</span>
-        <span>控制 {controlChannelLabel}</span>
-        <span>文本 {textChannelLabel}</span>
+        {connectionQuality.metrics.map((metric) => (
+          <span className="quality-metric" key={metric.label}>
+            <small>{metric.label}</small>
+            <strong>{metric.value}</strong>
+          </span>
+        ))}
       </div>
       <label className="auto-reconnect-toggle">
         <input

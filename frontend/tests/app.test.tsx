@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { analyzeRemoteSignalReadiness } from "@uurc/shared/streamerProtocol";
 import App from "../src/App.js";
+import type { BrowserRemoteSessionState } from "../src/remote/browserRemoteSession.js";
+import { getRemoteConnectionQuality } from "../src/remote/remoteControlUiModel.js";
 
 const readLocalClipboardTextMock = vi.hoisted(() => vi.fn(async () => ""));
 
@@ -87,6 +89,7 @@ describe("App console", () => {
     TestPeerConnection.sentByLabel = {};
     TestPeerConnection.channels = {};
     TestPeerConnection.closed = false;
+    TestPeerConnection.statsReports = [];
     readLocalClipboardTextMock.mockReset();
     readLocalClipboardTextMock.mockResolvedValue("");
     window.localStorage.clear();
@@ -674,6 +677,9 @@ describe("App console", () => {
     await waitFor(() => {
       expectSignalState("已连接");
     });
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
     await openAdvancedSettings(user);
     await user.click(screen.getByRole("button", { name: "手动同步诊断" }));
 
@@ -835,6 +841,159 @@ describe("App console", () => {
     await user.click(screen.getByRole("button", { name: "发送到远端" }));
     expect(TestPeerConnection.sentByLabel.TEXT_DATA_CHANNEL?.length).toBeGreaterThan(textBytesBefore);
     expect(screen.getByText("已发送 14 字符到远端")).toBeInTheDocument();
+  });
+
+  it("shows useful connection quality metrics when WebRTC stats provide them", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const firstStatsReport = buildStatsReport({
+      bytesReceived: 1_000_000,
+      framesDecoded: 100,
+      framesDropped: 2,
+      framesPerSecond: 30,
+      timestamp: 1_000,
+    });
+    const secondStatsReport = buildStatsReport({
+      bytesReceived: 1_600_000,
+      framesDecoded: 130,
+      framesDropped: 3,
+      framesPerSecond: 30,
+      frameWidth: 1920,
+      frameHeight: 1080,
+      currentRoundTripTime: 0.042,
+      timestamp: 2_000,
+    });
+    const thirdStatsReport = buildStatsReport({
+      bytesReceived: 2_200_000,
+      framesDecoded: 160,
+      framesDropped: 3,
+      framesPerSecond: 30,
+      frameWidth: 1920,
+      frameHeight: 1080,
+      currentRoundTripTime: 0.042,
+      timestamp: 3_000,
+    });
+    const fourthStatsReport = buildStatsReport({
+      bytesReceived: 2_800_000,
+      framesDecoded: 190,
+      framesDropped: 3,
+      framesPerSecond: 30,
+      frameWidth: 1920,
+      frameHeight: 1080,
+      currentRoundTripTime: 0.042,
+      timestamp: 4_000,
+    });
+    TestPeerConnection.statsReports = [firstStatsReport, secondStatsReport, thirdStatsReport, fourthStatsReport];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await openAdvancedSettings(user);
+    await user.click(screen.getByRole("button", { name: "手动同步诊断" }));
+
+    const quality = screen.getByRole("region", { name: "连接质量" });
+    await within(quality).findByText("帧率");
+    expect(within(quality).getByText("30 fps")).toBeInTheDocument();
+    expect(within(quality).getByText("接收码率")).toBeInTheDocument();
+    expect(within(quality).getByText("4.8 Mbps")).toBeInTheDocument();
+    expect(within(quality).getByText("延迟")).toBeInTheDocument();
+    expect(within(quality).getByText("42 ms")).toBeInTheDocument();
+    expect(within(quality).getByText("分辨率")).toBeInTheDocument();
+    expect(within(quality).getByText("1920x1080")).toBeInTheDocument();
+  });
+
+  it("keeps connection quality metric slots stable when WebRTC stats fluctuate", () => {
+    const richState: BrowserRemoteSessionState = {
+      appControlId: "app-1",
+      connectionPath: "direct",
+      dataChannels: {},
+      debugEvents: [],
+      remoteTrackCount: 1,
+      stage: "connected",
+      inboundVideo: {
+        bytesReceived: 2_200_000,
+        decoderImplementation: "VideoToolbox",
+        frameHeight: 1440,
+        frameWidth: 2560,
+        framesDropped: 0,
+        framesPerSecond: 57,
+        freezeCount: 0,
+        jitterBufferDelay: 0.012,
+        jitterBufferEmittedCount: 6,
+        packetsLost: 0,
+        packetsReceived: 420,
+      },
+      selectedCandidatePair: {
+        availableIncomingBitrate: 6_000_000,
+        availableOutgoingBitrate: 300_000,
+        currentRoundTripTime: 0.001,
+      },
+      videoFlow: {
+        status: "receiving",
+        title: "receiving",
+        detail: "receiving",
+        delta: {
+          bytesReceived: 97_200,
+          framesDecoded: 57,
+          sampleIntervalMs: 1000,
+        },
+        updatedAtMs: 1_000,
+      },
+    };
+    const sparseState: BrowserRemoteSessionState = {
+      appControlId: "app-1",
+      connectionPath: "direct",
+      dataChannels: {},
+      debugEvents: [],
+      remoteTrackCount: 1,
+      stage: "connected",
+      videoFlow: {
+        status: "receiving",
+        title: "receiving",
+        detail: "receiving",
+        updatedAtMs: 2_000,
+      },
+    };
+    const expectedLabels = [
+      "路径",
+      "画面",
+      "控制",
+      "文本",
+      "帧率",
+      "接收码率",
+      "延迟",
+      "分辨率",
+      "丢帧",
+      "冻结",
+      "丢包",
+      "抖动缓冲",
+      "下行余量",
+      "上行余量",
+      "解码器",
+    ];
+
+    const richMetrics = getRemoteConnectionQuality({
+      state: richState,
+      controlChannelState: "open",
+      textChannelState: "open",
+      connectionPathLabel: "直连",
+    }).metrics;
+    const sparseMetrics = getRemoteConnectionQuality({
+      state: sparseState,
+      controlChannelState: "open",
+      textChannelState: "open",
+      connectionPathLabel: "直连",
+    }).metrics;
+
+    expect(richMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
+    expect(sparseMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
+    expect(metricValue(sparseMetrics, "接收码率")).toBe("采样中");
+    expect(metricValue(sparseMetrics, "分辨率")).toBe("暂无");
   });
 
   it("provides a draggable remote toolbar with view mode, fullscreen, and shortcut actions", async () => {
@@ -1322,6 +1481,10 @@ function uuCalls(path: string) {
   return requestLog.filter((call) => call.path === path && call.transportPath === "/api/proxy/uu");
 }
 
+function metricValue(metrics: Array<{ label: string; value: string }>, label: string): string {
+  return metrics.find((metric) => metric.label === label)?.value ?? "";
+}
+
 function seedLoginState(status: typeof authReady): void {
   window.localStorage.setItem(
     "uurc.loginState",
@@ -1353,11 +1516,64 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function buildStatsReport(input: {
+  bytesReceived?: number;
+  framesDecoded?: number;
+  framesDropped?: number;
+  framesPerSecond?: number;
+  frameWidth?: number;
+  frameHeight?: number;
+  currentRoundTripTime?: number;
+  timestamp?: number;
+}): Map<string, Record<string, unknown>> {
+  return new Map<string, Record<string, unknown>>([
+    [
+      "pair-1",
+      {
+        id: "pair-1",
+        type: "candidate-pair",
+        selected: true,
+        state: "succeeded",
+        localCandidateId: "local-1",
+        remoteCandidateId: "remote-1",
+        currentRoundTripTime: input.currentRoundTripTime,
+      },
+    ],
+    ["local-1", { id: "local-1", type: "local-candidate", candidateType: "relay", protocol: "udp", address: "203.0.113.10" }],
+    ["remote-1", { id: "remote-1", type: "remote-candidate", candidateType: "relay", address: "203.0.113.11" }],
+    [
+      "codec-1",
+      {
+        id: "codec-1",
+        type: "codec",
+        mimeType: "video/H264",
+      },
+    ],
+    [
+      "inbound-video-1",
+      {
+        id: "inbound-video-1",
+        type: "inbound-rtp",
+        kind: "video",
+        codecId: "codec-1",
+        bytesReceived: input.bytesReceived,
+        framesDecoded: input.framesDecoded,
+        framesDropped: input.framesDropped,
+        framesPerSecond: input.framesPerSecond,
+        frameWidth: input.frameWidth,
+        frameHeight: input.frameHeight,
+        timestamp: input.timestamp,
+      },
+    ],
+  ]);
+}
+
 class TestPeerConnection {
   static lastConfiguration: RTCConfiguration | null = null;
   static sentByLabel: Record<string, number[]> = {};
   static channels: Record<string, RTCDataChannel> = {};
   static closed = false;
+  static statsReports: Array<Map<string, Record<string, unknown>>> = [];
   localDescription: RTCSessionDescriptionInit | null = null;
   remoteDescription: RTCSessionDescriptionInit | null = null;
   onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
@@ -1415,6 +1631,8 @@ class TestPeerConnection {
   async addIceCandidate(_candidate: RTCIceCandidateInit): Promise<void> {}
 
   async getStats(): Promise<Map<string, Record<string, unknown>>> {
+    const nextReport = TestPeerConnection.statsReports.shift();
+    if (nextReport) return nextReport;
     return new Map<string, Record<string, unknown>>([
       [
         "pair-1",

@@ -38,6 +38,12 @@ export type RemoteConnectionQuality = {
   state: RemoteConnectionQualityState;
   title: string;
   detail: string;
+  metrics: RemoteConnectionQualityMetric[];
+};
+
+export type RemoteConnectionQualityMetric = {
+  label: string;
+  value: string;
 };
 
 export type NextAction = {

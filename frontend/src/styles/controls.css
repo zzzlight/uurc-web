@@ -293,19 +293,47 @@
 
 .quality-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 6px;
 }
 
-.quality-metrics span,
+.quality-metric,
 .video-source-list > span {
   min-width: 0;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  color: var(--text-muted);
-  padding: 6px 8px;
+  padding: 7px 8px;
   overflow: hidden;
+}
+
+.quality-metric {
+  display: grid;
+  gap: 2px;
+  min-height: 64px;
+}
+
+.quality-metric small {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.quality-metric strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.video-source-list > span {
+  color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
