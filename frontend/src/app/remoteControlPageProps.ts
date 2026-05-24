@@ -18,6 +18,7 @@ import type {
   BusyAction,
   ConnectionRouteMode,
   NextAction,
+  RemoteConnectionQuality,
   RemoteStageViewMode,
   RemoteVideoStream,
   SdpTransportMode,
@@ -31,10 +32,17 @@ export interface RemoteControlPageProps {
   browserRtcReady: boolean;
   browserStageLabel: string;
   busy: BusyAction;
+  autoReconnectEnabled: boolean;
+  autoReconnectLabel: string;
   canDisconnectRemote: boolean;
+  canReadLocalClipboard: boolean;
   canReconnectRemote: boolean;
+  canSendClipboardText: boolean;
   canSendRemoteText: boolean;
   candidatePairSummary: string;
+  clipboardPreviewLabel: string;
+  clipboardStatusLabel: string;
+  connectionQuality: RemoteConnectionQuality;
   connectionPathLabel: string;
   connectionRouteMode: ConnectionRouteMode;
   controlChannelLabel: string;
@@ -90,6 +98,7 @@ export interface RemoteControlPageProps {
   videoElementLabel: string;
   videoFlowLabel: string;
   onConnectionRouteModeChange: (mode: ConnectionRouteMode) => void;
+  onAutoReconnectEnabledChange: (enabled: boolean) => void;
   onForceJoinChange: (forceJoin: boolean) => void;
   onNextAction: () => void;
   onReconnectRemote: () => void;
@@ -102,7 +111,9 @@ export interface RemoteControlPageProps {
   onRemoteStageWheel: (event: WheelEvent<HTMLDivElement>) => void;
   onRemoteShortcut: (shortcut: RemoteShortcut) => void;
   onRemoteTextInputChange: (value: string) => void;
+  onRemoteVideoSourceChange: (videoId: string) => void;
   onRemoteVideoSample: (videoId: string, sample: BrowserRemoteVideoElementSample) => void;
+  onReadLocalClipboard: () => void;
   onReturnToDevices: () => void;
   onSdpTransportModeChange: (mode: SdpTransportMode) => void;
   onSendRemoteText: () => void;
@@ -112,6 +123,7 @@ export interface RemoteControlPageProps {
   onStageViewModeChange: (mode: RemoteStageViewMode) => void;
   onStopSignalGateway: () => void;
   onSyncSignalEvents: () => void;
+  onSendClipboardText: () => void;
   onToggleInputControl: () => void;
   onToggleFullscreen: () => void;
 }

@@ -50,6 +50,7 @@ import {
   stopRemoteSignalGateway,
 } from "../api/client.js";
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
+import { readLocalClipboardText } from "../browser/clipboard.js";
 import { pickControllableDesktop } from "../devices/deviceSummary.js";
 import { BrowserRemoteSession, type BrowserRemoteSessionState, type BrowserRemoteVideoElementSample } from "../remote/browserRemoteSession.js";
 import { sendRemoteShortcut, type RemoteShortcut } from "../remote/remoteShortcuts.js";
@@ -61,6 +62,7 @@ import {
   formatBrowserRemoteStage,
   formatConnectionPath,
   formatDataChannelState,
+  getRemoteConnectionQuality,
   formatInboundVideoStats,
   formatRoomJoinContext,
   formatRoomReleaseDetail,
@@ -72,7 +74,7 @@ import {
   getNextAction,
   getRoomJoinFailureMessage,
   getRoomJoinFailureTakeoverHint,
-  selectPrimaryRemoteVideoId,
+  resolvePrimaryRemoteVideoId,
   summarizeRoomJoinUpstream,
   summarizeSwitchNetworkNotify,
   summarizeUnexpectedSignalEvents,
@@ -104,7 +106,13 @@ export function useRemoteControlController() {
   const [browserRemoteState, setBrowserRemoteState] = useState<BrowserRemoteSessionState>(createIdleBrowserRemoteState);
   const [remoteVideoStreams, setRemoteVideoStreams] = useState<RemoteVideoStream[]>([]);
   const [remoteVideoSamplesById, setRemoteVideoSamplesById] = useState<RemoteVideoSamplesById>({});
+  const [selectedRemoteVideoId, setSelectedRemoteVideoId] = useState("");
   const [remoteTextInput, setRemoteTextInput] = useState("");
+  const [clipboardText, setClipboardText] = useState("");
+  const [clipboardStatus, setClipboardStatus] = useState("尚未读取本机剪贴板");
+  const [autoReconnectEnabled, setAutoReconnectEnabled] = useState(true);
+  const [autoReconnectAttemptCount, setAutoReconnectAttemptCount] = useState(0);
+  const [autoReconnectStatus, setAutoReconnectStatus] = useState("");
   const [inputControlEnabled, setInputControlEnabled] = useState(false);
   const [sdpTransportMode, setSdpTransportMode] = useState<SdpTransportMode>("gzip");
   const [connectionRouteMode, setConnectionRouteMode] = useState<ConnectionRouteMode>("auto");
@@ -141,8 +149,8 @@ export function useRemoteControlController() {
   const selectedParticipants = selectedDevice?.participantsInfo ?? [];
   const selectedDeviceOccupied = selectedParticipants.length > 0;
   const primaryRemoteVideoId = useMemo(
-    () => selectPrimaryRemoteVideoId(remoteVideoStreams, remoteVideoSamplesById),
-    [remoteVideoSamplesById, remoteVideoStreams],
+    () => resolvePrimaryRemoteVideoId(remoteVideoStreams, remoteVideoSamplesById, selectedRemoteVideoId),
+    [remoteVideoSamplesById, remoteVideoStreams, selectedRemoteVideoId],
   );
 
   useEffect(() => {
@@ -518,6 +526,29 @@ export function useRemoteControlController() {
     }
   }
 
+  async function handleReadLocalClipboard() {
+    await run("clipboard-read", async () => {
+      const text = await readLocalClipboardText();
+      if (typeof text !== "string") {
+        setClipboardStatus("当前浏览器未返回剪贴板文本");
+        return;
+      }
+      setClipboardText(text);
+      setClipboardStatus(text.trim() ? `已读取 ${text.length} 字符` : "剪贴板为空");
+    });
+  }
+
+  function handleSendClipboardText() {
+    if (!clipboardText.trim() || !browserRemoteSession.current) return;
+    try {
+      browserRemoteSession.current.sendTextData(clipboardText);
+      setClipboardStatus(`已发送 ${clipboardText.length} 字符到远端`);
+      if (browserRemoteSession.current) setBrowserRemoteState(browserRemoteSession.current.getState());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   function handleRemoteShortcut(shortcut: RemoteShortcut) {
     if (!inputControlActive || !browserRemoteSession.current) return;
     try {
@@ -703,6 +734,7 @@ export function useRemoteControlController() {
   const normalJoinTakeoverHint = normalJoinLeftBeforeAnswer ? "画面未返回。" : "";
   const browserRtcReady = roomReadyForBrowserRtc && busy === null;
   const browserIceServers = browserRemoteState.controlResult?.iceServers.length ?? 0;
+  const connectionPathLabel = formatConnectionPath(browserRemoteState.connectionPath);
   const inboundVideoStatsLabel = formatInboundVideoStats(browserRemoteState.inboundVideo);
   const videoFlowLabel = formatVideoFlow(browserRemoteState);
   const videoElementLabel = formatVideoElement(browserRemoteState.videoElement);
@@ -725,6 +757,46 @@ export function useRemoteControlController() {
       ? "控制通道已断开"
       : "视频链路已停滞"
     : "";
+  const autoReconnectLabel = browserConnectionRecoverable && autoReconnectEnabled
+    ? autoReconnectStatus || "自动重连准备中"
+    : autoReconnectEnabled
+      ? "自动重连已开启"
+      : "自动重连已关闭";
+  const canReadLocalClipboard = busy === null;
+  const canSendClipboardText = inputControlActive && textChannelState === "open" && clipboardText.trim().length > 0;
+  const clipboardPreviewLabel = clipboardText.trim() ? `${clipboardText.length} 字符待发送` : "剪贴板内容未读取";
+  const connectionQuality = getRemoteConnectionQuality({
+    state: browserRemoteState,
+    controlChannelState,
+    textChannelState,
+    connectionPathLabel,
+  });
+
+  useEffect(() => {
+    if (!browserConnectionRecoverable) {
+      if (autoReconnectAttemptCount !== 0) setAutoReconnectAttemptCount(0);
+      if (autoReconnectStatus) setAutoReconnectStatus("");
+      return;
+    }
+    if (!autoReconnectEnabled || busy !== null || !roomJoinedForSelectedDevice || !signalGatewayMatchesRoom) return;
+
+    const delayMs = Math.min(5000, 900 * 2 ** Math.min(autoReconnectAttemptCount, 3));
+    setAutoReconnectStatus(`自动重连将在 ${Math.ceil(delayMs / 1000)} 秒后尝试`);
+    const timer = window.setTimeout(() => {
+      setAutoReconnectAttemptCount((count) => count + 1);
+      void handleReconnectRemote();
+    }, delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    autoReconnectAttemptCount,
+    autoReconnectEnabled,
+    autoReconnectStatus,
+    browserConnectionRecoverable,
+    busy,
+    roomJoinedForSelectedDevice,
+    signalGatewayMatchesRoom,
+  ]);
   const selectedCandidatePair = browserRemoteState.selectedCandidatePair;
   const candidatePairSummary = selectedCandidatePair
     ? `${selectedCandidatePair.localCandidateType ?? "-"} -> ${selectedCandidatePair.remoteCandidateType ?? "-"}`
@@ -759,7 +831,6 @@ export function useRemoteControlController() {
         : "-";
   const signalGatewayDisplay = formatSignalGatewayState(signalGatewayState);
   const browserStageLabel = formatBrowserRemoteStage(browserRemoteState.stage);
-  const connectionPathLabel = formatConnectionPath(browserRemoteState.connectionPath);
   const browserRtcDescription = browserRemoteState.controlResult ? "连接许可已确认" : "等待连接确认";
   const joinModeLabel = forceJoin ? "接管控制" : "普通加入";
   const roomJoinModeDebugLabel = formatRoomJoinContext(remoteBootstrap?.joinContext);
@@ -835,6 +906,8 @@ export function useRemoteControlController() {
 
   const controlPageProps: RemoteControlPageProps = {
     autoSwitchThresholdLabel,
+    autoReconnectEnabled,
+    autoReconnectLabel,
     browserIceServers,
     browserRemoteState,
     browserRtcDescription,
@@ -842,9 +915,14 @@ export function useRemoteControlController() {
     browserStageLabel,
     busy,
     canDisconnectRemote,
+    canReadLocalClipboard,
     canReconnectRemote: browserConnectionRecoverable,
+    canSendClipboardText,
     canSendRemoteText,
     candidatePairSummary,
+    clipboardPreviewLabel,
+    clipboardStatusLabel: clipboardStatus,
+    connectionQuality,
     connectionPathLabel,
     connectionRouteMode,
     controlChannelLabel,
@@ -899,6 +977,7 @@ export function useRemoteControlController() {
     unexpectedSignalEventSummary,
     videoElementLabel,
     videoFlowLabel,
+    onAutoReconnectEnabledChange: setAutoReconnectEnabled,
     onConnectionRouteModeChange: setConnectionRouteMode,
     onForceJoinChange: setForceJoin,
     onNextAction: () => void handleNextAction(),
@@ -912,7 +991,9 @@ export function useRemoteControlController() {
     onRemoteStageWheel: handleRemoteStageWheel,
     onRemoteShortcut: handleRemoteShortcut,
     onRemoteTextInputChange: setRemoteTextInput,
+    onRemoteVideoSourceChange: setSelectedRemoteVideoId,
     onRemoteVideoSample: handleRemoteVideoSample,
+    onReadLocalClipboard: () => void handleReadLocalClipboard(),
     onReturnToDevices: () => void handleReturnToDevices(),
     onSdpTransportModeChange: setSdpTransportMode,
     onSendRemoteText: handleSendRemoteText,
@@ -922,6 +1003,7 @@ export function useRemoteControlController() {
     onStageViewModeChange: setRemoteStageViewMode,
     onStopSignalGateway: () => void handleStopSignalGateway(),
     onSyncSignalEvents: () => void handleSyncSignalEvents(),
+    onSendClipboardText: handleSendClipboardText,
     onToggleInputControl: handleToggleInputControl,
     onToggleFullscreen: handleToggleFullscreen,
   };

@@ -8,7 +8,13 @@ import type {
   RoomJoinResult,
 } from "@uurc/shared/types";
 
-import type { BusyAction, NextAction, RemoteVideoSamplesById, RemoteVideoStream } from "../app/remoteControlTypes.js";
+import type {
+  BusyAction,
+  NextAction,
+  RemoteConnectionQuality,
+  RemoteVideoSamplesById,
+  RemoteVideoStream,
+} from "../app/remoteControlTypes.js";
 import { toAndroidKeyCodeFromDomEvent } from "./androidKeyCodes.js";
 import type { BrowserRemoteSessionState, BrowserRemoteVideoElementSample } from "./browserRemoteSession.js";
 
@@ -36,6 +42,15 @@ export function selectPrimaryRemoteVideoId(videos: RemoteVideoStream[], samplesB
     .sort((left, right) => right.score - left.score || left.index - right.index);
 
   return scoredVideos[0]?.id ?? videos[0].id;
+}
+
+export function resolvePrimaryRemoteVideoId(
+  videos: RemoteVideoStream[],
+  samplesById: RemoteVideoSamplesById,
+  selectedVideoId: string,
+): string {
+  if (selectedVideoId && videos.some((video) => video.id === selectedVideoId)) return selectedVideoId;
+  return selectPrimaryRemoteVideoId(videos, samplesById);
 }
 
 function scoreRemoteVideoSample(sample: BrowserRemoteVideoElementSample | undefined): number {
@@ -439,6 +454,54 @@ export function formatVideoElement(sample: BrowserRemoteSessionState["videoEleme
     sample.width && sample.height ? `${sample.width}x${sample.height}` : null,
   ].filter((item): item is string => item !== null);
   return parts.join(" · ");
+}
+
+export function getRemoteConnectionQuality(input: {
+  state: BrowserRemoteSessionState;
+  controlChannelState: RTCDataChannelState;
+  textChannelState: RTCDataChannelState;
+  connectionPathLabel: string;
+}): RemoteConnectionQuality {
+  if (input.state.stage !== "connected") {
+    return {
+      state: "pending",
+      title: "等待连接",
+      detail: "远控画面尚未建立。",
+    };
+  }
+  if (input.controlChannelState === "closed") {
+    return {
+      state: "bad",
+      title: "控制通道断开",
+      detail: "自动重连或手动重连可以复用当前房间。",
+    };
+  }
+  if (input.state.videoFlow?.status === "transport_stalled") {
+    return {
+      state: "bad",
+      title: "视频链路停滞",
+      detail: input.state.videoFlow.detail,
+    };
+  }
+  if (input.state.videoFlow?.status === "decode_stalled") {
+    return {
+      state: "warn",
+      title: "解码停帧",
+      detail: input.state.videoFlow.detail,
+    };
+  }
+  if (input.state.videoFlow?.status === "receiving") {
+    return {
+      state: "good",
+      title: "链路正常",
+      detail: `${input.connectionPathLabel} · 控制 ${formatDataChannelState(input.controlChannelState)} · 文本 ${formatDataChannelState(input.textChannelState)}`,
+    };
+  }
+  return {
+    state: "pending",
+    title: "等待质量采样",
+    detail: `${input.connectionPathLabel} · 控制 ${formatDataChannelState(input.controlChannelState)} · 文本 ${formatDataChannelState(input.textChannelState)}`,
+  };
 }
 
 export function formatSignalGatewayState(state: string): string {

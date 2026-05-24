@@ -13,6 +13,7 @@ export type BusyAction =
   | "signal-stop"
   | "browser-remote-start"
   | "reconnect"
+  | "clipboard-read"
   | "signal-events"
   | null;
 
@@ -29,6 +30,14 @@ export type RoomJoinContext = {
 export type RemoteVideoStream = {
   id: string;
   stream: MediaStream;
+};
+
+export type RemoteConnectionQualityState = "pending" | "good" | "warn" | "bad";
+
+export type RemoteConnectionQuality = {
+  state: RemoteConnectionQualityState;
+  title: string;
+  detail: string;
 };
 
 export type NextAction = {

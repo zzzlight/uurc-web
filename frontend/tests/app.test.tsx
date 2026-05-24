@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { analyzeRemoteSignalReadiness } from "@uurc/shared/streamerProtocol";
 import App from "../src/App.js";
 
+const readLocalClipboardTextMock = vi.hoisted(() => vi.fn(async () => ""));
+
+vi.mock("../src/browser/clipboard.js", () => ({
+  readLocalClipboardText: readLocalClipboardTextMock,
+}));
+
 const authReady = {
   hasState: true,
   missingFields: [],
@@ -81,6 +87,8 @@ describe("App console", () => {
     TestPeerConnection.sentByLabel = {};
     TestPeerConnection.channels = {};
     TestPeerConnection.closed = false;
+    readLocalClipboardTextMock.mockReset();
+    readLocalClipboardTextMock.mockResolvedValue("");
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.history.replaceState(null, "", "/");
@@ -749,6 +757,7 @@ describe("App console", () => {
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
+    await user.click(screen.getByRole("checkbox", { name: "自动重连" }));
 
     TestPeerConnection.closeDataChannel("CONTROL_DATA_CHANNEL");
 
@@ -763,6 +772,69 @@ describe("App console", () => {
     });
     expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
     expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
+  });
+
+  it("auto reconnects recoverable sessions without rejoining the UU room", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+
+    TestPeerConnection.closeDataChannel("CONTROL_DATA_CHANNEL");
+
+    await screen.findByText(/自动重连将在/);
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(2);
+    }, { timeout: 2500 });
+    expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(1);
+  });
+
+  it("surfaces clipboard sync, connection quality, and manual video source selection", async () => {
+    vi.stubGlobal("MediaStream", FakeMediaStream);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    readLocalClipboardTextMock.mockResolvedValue("from clipboard");
+    currentParticipants = [];
+    remoteTrackPlan = [
+      { id: "blank-video", kind: "video" },
+      { id: "desktop-video", kind: "video" },
+    ];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openOfficeMacControl(user);
+    await user.click(screen.getByRole("radio", { name: "兼容模式" }));
+    await user.click(getPrimaryAction("启动连接"));
+    await waitFor(() => {
+      expectSignalState("已连接");
+    });
+    await user.click(screen.getByRole("button", { name: "启用输入控制" }));
+
+    expect(screen.getByRole("region", { name: "连接质量" })).toBeInTheDocument();
+    expect(screen.getByText("等待质量采样")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "自动重连" })).toBeChecked();
+
+    expect(screen.getByRole("region", { name: "画面源" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "画面 1" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "画面 2" }));
+    expect(screen.getByRole("button", { name: "画面 2" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "读取剪贴板" }));
+    await waitFor(() => {
+      expect(readLocalClipboardTextMock).toHaveBeenCalledTimes(1);
+    });
+    await screen.findByText("已读取 14 字符");
+    const textBytesBefore = TestPeerConnection.sentByLabel.TEXT_DATA_CHANNEL?.length ?? 0;
+    await user.click(screen.getByRole("button", { name: "发送到远端" }));
+    expect(TestPeerConnection.sentByLabel.TEXT_DATA_CHANNEL?.length).toBeGreaterThan(textBytesBefore);
+    expect(screen.getByText("已发送 14 字符到远端")).toBeInTheDocument();
   });
 
   it("provides a draggable remote toolbar with view mode, fullscreen, and shortcut actions", async () => {
@@ -892,7 +964,7 @@ describe("App console", () => {
 
     await screen.findByLabelText("远控画面视频");
     expect(screen.queryByLabelText("远控视频 2")).not.toBeInTheDocument();
-    expect(screen.queryByText(/视频轨/)).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "画面源" })).toBeInTheDocument();
     expect(screen.getByText(/2 路视频/)).toBeInTheDocument();
   });
 });

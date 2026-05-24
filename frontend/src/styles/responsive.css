@@ -80,6 +80,14 @@
     margin-top: 8px;
   }
 
+  .control-insights {
+    grid-template-columns: 1fr;
+  }
+
+  .quality-metrics {
+    grid-template-columns: 1fr;
+  }
+
   .remote-input-row:not(.compact) {
     grid-template-columns: 1fr;
   }
