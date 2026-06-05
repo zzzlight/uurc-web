@@ -876,6 +876,14 @@ describe("streamer protocol constants", () => {
     expect(buildDefaultStreamerConnectOptionsBase64({ deviceId: "web-device-1" })).toBe(
       "CAEQ////////////ARoQCAIQAxgBIAEqBgiADxC4CCIMCDwQARiAHiDwECgBMggIgA8QuAgYPEACSgx3ZWItZGV2aWNlLTFQAVoOCAIQARgCIAIwAjgCQANiBjQuMjMuMA==",
     );
+    expect(
+      buildDefaultStreamerConnectOptionsBase64({
+        deviceId: "web-device-1",
+        controlConnectType: STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Assistance,
+      }),
+    ).toBe(
+      "CAEQ////////////ARoQCAIQAxgBIAEqBgiADxC4CCIMCDwQARiAHiDwECgBMggIgA8QuAgYPEACSgx3ZWItZGV2aWNlLTFQAloOCAIQARgCIAIwAjgCQANiBjQuMjMuMA==",
+    );
   });
 
   it("omits the ConnectOptions type_value tag by default for normal desktop control", () => {

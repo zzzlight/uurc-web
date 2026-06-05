@@ -104,6 +104,73 @@
   font-size: 13px;
 }
 
+.remote-assistance-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(255, 255, 255, 0) 42%),
+    var(--surface);
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.remote-assistance-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.remote-assistance-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.remote-assistance-heading h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.remote-assistance-heading p,
+.remote-assistance-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.remote-assistance-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.remote-assistance-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.remote-assistance-form label span {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.remote-assistance-submit {
+  min-width: 96px;
+}
+
 .input-guard {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

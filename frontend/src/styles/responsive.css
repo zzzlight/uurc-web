@@ -30,7 +30,8 @@
 
   .control-drawer-row,
   .login-actions,
-  .device-home {
+  .device-home,
+  .remote-assistance-form {
     grid-template-columns: 1fr;
   }
 

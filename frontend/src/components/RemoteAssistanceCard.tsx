@@ -1,0 +1,77 @@
+import { Handshake, KeyRound, LoaderCircle } from "lucide-react";
+
+export function RemoteAssistanceCard({
+  busy,
+  connectCode,
+  connectId,
+  notice,
+  onConnectCodeChange,
+  onConnectIdChange,
+  onStart,
+}: {
+  busy: string | null;
+  connectCode: string;
+  connectId: string;
+  notice: string;
+  onConnectCodeChange: (value: string) => void;
+  onConnectIdChange: (value: string) => void;
+  onStart: () => void;
+}) {
+  const submitting = busy === "assistance";
+  const disabled = busy !== null || connectId.trim().length === 0;
+
+  return (
+    <section className="remote-assistance-card" aria-labelledby="remote-assistance-title">
+      <div className="remote-assistance-heading">
+        <span className="remote-assistance-icon" aria-hidden="true">
+          <Handshake size={18} />
+        </span>
+        <div>
+          <h3 id="remote-assistance-title">远控伙伴设备</h3>
+          <p>通过伙伴的设备 ID 和设备验证码发起远程协助。</p>
+        </div>
+      </div>
+
+      <form
+        className="remote-assistance-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!disabled) onStart();
+        }}
+      >
+        <label>
+          <span>伙伴的设备 ID</span>
+          <input
+            autoComplete="off"
+            inputMode="numeric"
+            maxLength={12}
+            onChange={(event) => onConnectIdChange(event.target.value.replace(/\D/g, ""))}
+            placeholder="请输入设备 ID"
+            value={connectId}
+          />
+        </label>
+
+        <label>
+          <span>伙伴的设备验证码</span>
+          <input
+            autoCapitalize="characters"
+            autoComplete="one-time-code"
+            onChange={(event) => onConnectCodeChange(event.target.value.trim())}
+            placeholder="可留空等待对方确认"
+            spellCheck={false}
+            value={connectCode}
+          />
+        </label>
+
+        <button className="primary-action-button remote-assistance-submit" disabled={disabled} type="submit">
+          {submitting ? <LoaderCircle className="spin" size={17} /> : <KeyRound size={17} />}
+          连接
+        </button>
+      </form>
+
+      <p className="remote-assistance-note">
+        {notice || "如果伙伴设备要求确认，可不填验证码直接发起；如果要求验证码，则需要对方提供临时验证码。"}
+      </p>
+    </section>
+  );
+}

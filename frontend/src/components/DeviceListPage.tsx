@@ -10,6 +10,9 @@ export function DeviceListPage({
   authJson,
   devices,
   selectedDeviceId,
+  assistanceConnectId,
+  assistanceConnectCode,
+  assistanceNotice,
   identitySourceLabel,
   identityDeviceLabel,
   error,
@@ -17,6 +20,9 @@ export function DeviceListPage({
   onLoadDevices,
   onSelectDevice,
   onOpenDevice,
+  onAssistanceConnectIdChange,
+  onAssistanceConnectCodeChange,
+  onStartRemoteAssistance,
   onExport,
   onLogout,
 }: {
@@ -24,6 +30,9 @@ export function DeviceListPage({
   authJson: string;
   devices: UuDeviceGroups;
   selectedDeviceId: string;
+  assistanceConnectId: string;
+  assistanceConnectCode: string;
+  assistanceNotice: string;
   identitySourceLabel: string;
   identityDeviceLabel: string;
   error: string;
@@ -31,6 +40,9 @@ export function DeviceListPage({
   onLoadDevices: () => void;
   onSelectDevice: (deviceId: string) => void;
   onOpenDevice: (deviceId: string) => void;
+  onAssistanceConnectIdChange: (value: string) => void;
+  onAssistanceConnectCodeChange: (value: string) => void;
+  onStartRemoteAssistance: () => void;
   onExport: () => void;
   onLogout: () => void;
 }) {
@@ -56,9 +68,15 @@ export function DeviceListPage({
           devices={devices}
           busy={busy}
           selectedDeviceId={selectedDeviceId}
+          assistanceConnectId={assistanceConnectId}
+          assistanceConnectCode={assistanceConnectCode}
+          assistanceNotice={assistanceNotice}
           onSelectDevice={onSelectDevice}
           onOpenDevice={onOpenDevice}
           onLoadDevices={onLoadDevices}
+          onAssistanceConnectIdChange={onAssistanceConnectIdChange}
+          onAssistanceConnectCodeChange={onAssistanceConnectCodeChange}
+          onStartRemoteAssistance={onStartRemoteAssistance}
         />
 
         <aside className="account-drawer" aria-label="账号管理">

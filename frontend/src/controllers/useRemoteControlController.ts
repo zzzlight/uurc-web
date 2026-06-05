@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router";
 
 import {
+  STREAMER_CONTROL_CONNECT_TYPES,
   STREAMER_DATA_CHANNEL_LABELS,
   analyzeRemoteSignalReadiness,
   buildDefaultStreamerConnectOptionsBase64,
@@ -15,6 +16,7 @@ import type {
   RemoteSignalGatewayStatus,
   RemoteSignalReadinessDiagnostics,
   RuntimeProfile,
+  RemoteAssistanceJoinResult,
   RoomJoinResult,
   UuDeviceGroups,
 } from "@uurc/shared/types";
@@ -30,17 +32,21 @@ import type {
 } from "../app/remoteControlTypes.js";
 import { SELF_DEVICE_BLOCKED_REASON } from "../app/remoteControlTypes.js";
 import {
+  cancelRemoteAssistance,
   clearAuthState,
   clearRoomByDevice,
   createMobileDevice,
   exportAuthState,
   getAuthStatus,
   getDeviceGroups,
+  getRemoteAssistanceControlMode,
   getRemoteBootstrap,
   getRuntimeProfile,
   getRemoteSignalDiagnostics,
   getRemoteSignalEvents,
   importAuthState,
+  joinRemoteAssistanceByCode,
+  joinRemoteAssistanceByConfirmation,
   joinRoomByDevice,
   loginByMobile,
   sendMobileCode,
@@ -64,6 +70,7 @@ import {
   formatDataChannelState,
   getRemoteConnectionQuality,
   formatInboundVideoStats,
+  formatRemoteAssistanceMode,
   formatRoomJoinContext,
   formatRoomReleaseDetail,
   formatRoomReleaseState,
@@ -95,6 +102,9 @@ export function useRemoteControlController() {
   const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [selectedDeviceIdState, setSelectedDeviceId] = useState("");
   const [forceJoin, setForceJoin] = useState(false);
+  const [assistanceConnectId, setAssistanceConnectId] = useState("");
+  const [assistanceConnectCode, setAssistanceConnectCode] = useState("");
+  const [assistanceNotice, setAssistanceNotice] = useState("");
   const [roomResponse, setRoomResponse] = useState<RoomJoinResult | null>(null);
   const [roomJoinContext, setRoomJoinContext] = useState<RoomJoinContext | null>(null);
   const [signalGatewayContext, setSignalGatewayContext] = useState<RoomJoinContext | null>(null);
@@ -237,6 +247,9 @@ export function useRemoteControlController() {
       setDevicesLoaded(false);
       setSelectedDeviceId("");
       setForceJoin(false);
+      setAssistanceConnectId("");
+      setAssistanceConnectCode("");
+      setAssistanceNotice("");
       setRoomResponse(null);
       setRoomJoinContext(null);
       setSignalGatewayContext(null);
@@ -294,6 +307,83 @@ export function useRemoteControlController() {
     navigate(`/devices/${encodeURIComponent(deviceId)}/control`);
   }
 
+  async function handleStartRemoteAssistance() {
+    if (busy !== null) return;
+    if (!loggedIn) {
+      setError("远程协助需要先登录 UU 账号。");
+      return;
+    }
+
+    await run("assistance", async () => {
+      const connectId = assistanceConnectId.trim();
+      const connectCode = assistanceConnectCode.trim();
+      const modeResult = await getRemoteAssistanceControlMode(connectId);
+      if (modeResult.upstream.body.code !== undefined && modeResult.upstream.body.code !== 0) {
+        throw new Error(modeResult.upstream.body.msg ?? `远程协助模式返回 ${modeResult.upstream.body.code}`);
+      }
+      if (!modeResult.canRemoteControl) {
+        throw new Error("伙伴设备当前不允许远程协助");
+      }
+      if (!modeResult.controlMode) {
+        throw new Error("伙伴设备未返回可识别的验证方式");
+      }
+
+      let joined: RemoteAssistanceJoinResult;
+      if (connectCode) {
+        joined = await joinRemoteAssistanceByCode({
+          connectId,
+          connectCode,
+          controlMode: modeResult.controlMode,
+        });
+        if (!joined.roomConfigSummary && joined.assistance.confirmationRequired) {
+          setAssistanceNotice("伙伴设备要求二次确认，正在等待对方确认...");
+          joined = await joinRemoteAssistanceByConfirmation({
+            connectId,
+            connectCode,
+            controlId: joined.assistance.controlId,
+            controlMode: modeResult.controlMode,
+          });
+        }
+      } else if (modeResult.controlMode === "by_confirmation") {
+        setAssistanceNotice("正在等待伙伴设备确认...");
+        joined = await joinRemoteAssistanceByConfirmation({
+          connectId,
+          controlMode: modeResult.controlMode,
+        });
+      } else {
+        throw new Error("伙伴设备当前要求输入设备验证码");
+      }
+
+      if (!joined.roomConfigSummary) {
+        throw new Error(joined.upstream.body.msg ?? "远程协助未返回可用房间配置");
+      }
+
+      const context: RoomJoinContext = {
+        kind: "remote_assistance",
+        deviceId: joined.assistance.connectId,
+        forceJoin: false,
+        occupiedAtJoin: false,
+        connectId: joined.assistance.connectId,
+        connectCodeProvided: joined.assistance.connectCodeProvided,
+        controlId: joined.assistance.controlId,
+        controlMode: joined.assistance.controlMode,
+        deviceName: joined.assistance.deviceName,
+      };
+      setSelectedDeviceId(joined.assistance.connectId);
+      setRoomResponse(joined);
+      setRoomJoinContext(context);
+      setForceJoin(false);
+      setSignalGatewayContext(null);
+      setSignalGatewayStatus(null);
+      setSignalEvents([]);
+      setRemoteSignalDiagnostics(null);
+      resetBrowserRemoteSession();
+      setRemoteBootstrap(await getRemoteBootstrap());
+      setAssistanceNotice(`已进入远程协助：${formatRemoteAssistanceMode(modeResult.controlMode)}`);
+      navigate(`/devices/${encodeURIComponent(joined.assistance.connectId)}/control`);
+    });
+  }
+
   async function joinRoomForDevice(deviceId: string, joinWithForce = forceJoin): Promise<RoomJoinContext | null> {
     if (!deviceId) return null;
     let nextContext: RoomJoinContext | null = null;
@@ -303,6 +393,7 @@ export function useRemoteControlController() {
       }
       const device = allDevices.find((item) => item.deviceId === deviceId) ?? null;
       const context = {
+        kind: "owned_device" as const,
         deviceId,
         forceJoin: joinWithForce,
         occupiedAtJoin: (device?.participantsInfo?.length ?? 0) > 0,
@@ -315,6 +406,7 @@ export function useRemoteControlController() {
       setSignalGatewayStatus(null);
       setSignalEvents([]);
       setRemoteSignalDiagnostics(null);
+      setAssistanceNotice("");
       resetBrowserRemoteSession();
       setRemoteBootstrap(joined.roomConfigSummary ? await getRemoteBootstrap() : null);
       nextContext = context;
@@ -345,11 +437,14 @@ export function useRemoteControlController() {
       resetBrowserRemoteSession();
       const stopped = await stopRemoteSignalGateway();
       let nextStatus = stopped;
-      if (roomJoinContext?.deviceId) {
+      const clearContext = roomJoinContext;
+      if (clearContext?.deviceId) {
         try {
           nextStatus = {
             ...stopped,
-            roomClear: await clearRoomByDevice(roomJoinContext.deviceId),
+            roomClear: clearContext.kind === "remote_assistance"
+              ? await cancelRemoteAssistance(clearContext.connectId ?? clearContext.deviceId)
+              : await clearRoomByDevice(clearContext.deviceId),
             updatedAt: new Date().toISOString(),
           };
         } catch (caught) {
@@ -366,10 +461,12 @@ export function useRemoteControlController() {
       if (nextStatus.roomClear && (nextStatus.roomClear.body.code === undefined || nextStatus.roomClear.body.code === 0)) {
         setRoomJoinContext((current) => current ? { ...current, occupiedAtJoin: false } : current);
       }
-      try {
-        setDevices(await getDeviceGroups());
-      } catch {
-        // Disconnect should still complete even if the follow-up device refresh fails.
+      if (clearContext?.kind !== "remote_assistance") {
+        try {
+          setDevices(await getDeviceGroups());
+        } catch {
+          // Disconnect should still complete even if the follow-up device refresh fails.
+        }
       }
     });
   }
@@ -407,9 +504,15 @@ export function useRemoteControlController() {
       onStateChange: setBrowserRemoteState,
     });
     browserRemoteSession.current = session;
+    const controlConnectType = roomJoinContext?.kind === "remote_assistance"
+      ? STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Assistance
+      : STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Normal;
     const state = await session.start({
       appControlId,
-      appDataBase64: buildDefaultStreamerConnectOptionsBase64({ deviceId: authStatus.deviceId }),
+      appDataBase64: buildDefaultStreamerConnectOptionsBase64({
+        deviceId: authStatus.deviceId,
+        controlConnectType,
+      }),
       streamerData: buildStreamerControlStreamerDataJson({ controlId: appControlId }),
       forceRelay: connectionRouteMode === "relay" ? true : undefined,
       gzipSdp: sdpTransportMode === "gzip",
@@ -470,7 +573,7 @@ export function useRemoteControlController() {
       setError("请先登录");
       return;
     }
-    if (deviceTotal === 0 || !selectedDeviceId) {
+    if (!selectedDeviceId || (deviceTotal === 0 && roomJoinContext?.kind !== "remote_assistance")) {
       await loadDevices();
       return;
     }
@@ -720,7 +823,8 @@ export function useRemoteControlController() {
   const signalGatewayMatchesRoom =
     signalGatewayState === "connected" &&
     signalGatewayContext?.deviceId === roomJoinContext?.deviceId &&
-    signalGatewayContext?.forceJoin === roomJoinContext?.forceJoin;
+    signalGatewayContext?.forceJoin === roomJoinContext?.forceJoin &&
+    (signalGatewayContext?.kind ?? "owned_device") === (roomJoinContext?.kind ?? "owned_device");
   const roomReadyForBrowserRtc = roomJoinedForSelectedDevice && !roomRequiresTakeover && signalGatewayMatchesRoom;
   const browserRtcBlockedReason = selfDeviceBlockedReason
     ? selfDeviceBlockedReason
@@ -842,6 +946,9 @@ export function useRemoteControlController() {
   const browserRtcDescription = browserRemoteState.controlResult ? "连接许可已确认" : "等待连接确认";
   const joinModeLabel = forceJoin ? "接管控制" : "普通加入";
   const roomJoinModeDebugLabel = formatRoomJoinContext(remoteBootstrap?.joinContext);
+  const selectedTargetLabel = selectedDevice?.alias
+    ?? roomJoinContext?.deviceName
+    ?? (roomJoinContext?.kind === "remote_assistance" ? `远程协助 ${roomJoinContext.connectId ?? roomJoinContext.deviceId}` : "远控画面");
   const remoteVideoCount = remoteVideoStreams.length;
   const debugEvents = browserRemoteState.debugEvents;
   const hasRemoteVideo = remoteVideoCount > 0;
@@ -851,8 +958,8 @@ export function useRemoteControlController() {
     remoteVideoCount > 0 ||
     controlChannelState !== "closed" ||
     textChannelState !== "closed";
-  const roomReleaseLabel = formatRoomReleaseState(signalGatewayStatus, canDisconnectRemote, selectedDeviceOccupied);
-  const roomReleaseDetail = formatRoomReleaseDetail(signalGatewayStatus);
+  const roomReleaseLabel = formatRoomReleaseState(signalGatewayStatus, canDisconnectRemote, selectedDeviceOccupied, roomJoinContext);
+  const roomReleaseDetail = formatRoomReleaseDetail(signalGatewayStatus, roomJoinContext);
   const nextAction = getNextAction({
     busy,
     browserConnectionRecoverable,
@@ -861,6 +968,7 @@ export function useRemoteControlController() {
     inputControlActive,
     loggedIn,
     roomJoinedForSelectedDevice,
+    remoteAssistanceTarget: roomJoinContext?.kind === "remote_assistance",
     roomRequiresTakeover,
     selectedDeviceId,
     selectedDeviceIsCurrentAuthDevice,
@@ -900,6 +1008,9 @@ export function useRemoteControlController() {
     authJson,
     devices,
     selectedDeviceId,
+    assistanceConnectId,
+    assistanceConnectCode,
+    assistanceNotice,
     identitySourceLabel,
     identityDeviceLabel,
     error,
@@ -908,6 +1019,9 @@ export function useRemoteControlController() {
     onLoadDevices: () => void loadDevices(),
     onSelectDevice: setSelectedDeviceId,
     onOpenDevice: (deviceId: string) => void handleOpenDevice(deviceId),
+    onAssistanceConnectIdChange: setAssistanceConnectId,
+    onAssistanceConnectCodeChange: setAssistanceConnectCode,
+    onStartRemoteAssistance: () => void handleStartRemoteAssistance(),
     onExport: () => void handleExport(),
     onLogout: () => void handleLogout(),
   };
@@ -969,6 +1083,7 @@ export function useRemoteControlController() {
     sdpTransportMode,
     selectedDevice,
     selectedDeviceId,
+    selectedTargetLabel,
     selectedDeviceOccupied,
     selectedParticipants,
     selfDeviceBlockedReason,

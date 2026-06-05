@@ -10,6 +10,7 @@ export function RemoteControlTopbar({
   onReturnToDevices,
   onStopSignalGateway,
   selectedDevice,
+  selectedTargetLabel,
   signalGatewayDisplay,
 }: Pick<
   RemoteControlPageProps,
@@ -19,6 +20,7 @@ export function RemoteControlTopbar({
   | "onReturnToDevices"
   | "onStopSignalGateway"
   | "selectedDevice"
+  | "selectedTargetLabel"
   | "signalGatewayDisplay"
 >) {
   return (
@@ -27,7 +29,7 @@ export function RemoteControlTopbar({
         返回设备列表
       </button>
       <div>
-        <h1>{selectedDevice?.alias ?? "远控画面"}</h1>
+        <h1>{selectedDevice?.alias ?? selectedTargetLabel}</h1>
       </div>
       <div className="topbar-actions">
         <StatusPill state={browserRemoteState.stage === "connected" ? "ready" : "idle"}>

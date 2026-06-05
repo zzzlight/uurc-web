@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  cancelRemoteAssistance,
+  getRemoteAssistanceControlMode,
   getRuntimeProfile,
   getRemoteSignalDiagnostics,
   getRemoteSignalEvents,
+  joinRemoteAssistanceByCode,
+  joinRemoteAssistanceByConfirmation,
   sendRemoteSignalControl,
   sendRemoteSignalSoac,
   updateRoomAppFlag,
@@ -150,6 +154,141 @@ describe("frontend API client remote signal helpers", () => {
       ],
     ]);
   });
+
+  it("calls UU remote assistance routes through the signed proxy", async () => {
+    const calls: Array<{ path: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({ path: String(input), init });
+        const request = init?.body ? JSON.parse(String(init.body)) : null;
+        if (String(input) !== "/api/proxy/uu") {
+          return jsonResponse({});
+        }
+        if (request.path === "/api/v2/room/share/control_mode") {
+          return jsonResponse(proxyResponse({
+            code: 0,
+            data: {
+              can_remote_control: true,
+              control_mode: "by_password",
+            },
+          }));
+        }
+        if (request.path === "/api/v2/room/join/share/by_code") {
+          return jsonResponse(proxyResponse(remoteAssistanceRoomBody("assist-room-token")));
+        }
+        if (request.path === "/api/v2/room/join/share/by_confirmation") {
+          return jsonResponse(proxyResponse(remoteAssistanceRoomBody("assist-confirm-room-token")));
+        }
+        if (request.path === "/api/v2/room/share/cancel_remote_assist") {
+          return jsonResponse(proxyResponse({ code: 0, msg: "ok" }));
+        }
+        return jsonResponse({});
+      }),
+    );
+
+    await expect(getRemoteAssistanceControlMode("982123456")).resolves.toMatchObject({
+      connectId: "982123456",
+      canRemoteControl: true,
+      controlMode: "by_password",
+    });
+    await expect(
+      joinRemoteAssistanceByCode({
+        connectId: "982123456",
+        connectCode: "L6026CCD",
+        controlMode: "by_password",
+      }),
+    ).resolves.toMatchObject({
+      assistance: {
+        connectId: "982123456",
+        connectCodeProvided: true,
+        controlMode: "by_password",
+        deviceName: "Partner PC",
+      },
+      roomConfigSummary: {
+        signalServers: ["wss://assist.example"],
+      },
+    });
+    await expect(
+      joinRemoteAssistanceByConfirmation({
+        connectId: "982123456",
+        controlId: "control-1",
+        controlMode: "by_confirmation",
+      }),
+    ).resolves.toMatchObject({
+      assistance: {
+        connectId: "982123456",
+        controlId: "control-1",
+        usedConfirmation: true,
+      },
+    });
+    await expect(cancelRemoteAssistance("982123456")).resolves.toMatchObject({
+      body: {
+        code: 0,
+      },
+    });
+
+    expect(calls.map((call) => [call.path, call.init?.method ?? "GET", call.init?.body ? JSON.parse(String(call.init.body)) : null])).toEqual([
+      [
+        "/api/proxy/uu",
+        "POST",
+        {
+          method: "POST",
+          path: "/api/v2/room/share/control_mode",
+          body: {
+            connect_id: "982123456",
+          },
+          headers: expect.objectContaining({
+            "X-Param-SIGN": expect.any(String),
+          }),
+        },
+      ],
+      [
+        "/api/proxy/uu",
+        "POST",
+        {
+          method: "POST",
+          path: "/api/v2/room/join/share/by_code",
+          body: {
+            connect_id: "982123456",
+            connect_code: "L6026CCD",
+          },
+          headers: expect.objectContaining({
+            "X-Param-SIGN": expect.any(String),
+          }),
+        },
+      ],
+      [
+        "/api/proxy/uu",
+        "POST",
+        {
+          method: "POST",
+          path: "/api/v2/room/join/share/by_confirmation",
+          body: {
+            connect_id: "982123456",
+            control_id: "control-1",
+          },
+          headers: expect.objectContaining({
+            "X-Param-SIGN": expect.any(String),
+          }),
+        },
+      ],
+      [
+        "/api/proxy/uu",
+        "POST",
+        {
+          method: "POST",
+          path: "/api/v2/room/share/cancel_remote_assist",
+          body: {
+            connect_id: "982123456",
+          },
+          headers: expect.objectContaining({
+            "X-Param-SIGN": expect.any(String),
+          }),
+        },
+      ],
+    ]);
+  });
 });
 
 function jsonResponse(body: unknown): Response {
@@ -157,4 +296,31 @@ function jsonResponse(body: unknown): Response {
     status: 200,
     headers: { "content-type": "application/json" },
   });
+}
+
+function proxyResponse(body: unknown) {
+  return {
+    status: 200,
+    statusText: "OK",
+    headers: { "content-type": "application/json" },
+    body,
+  };
+}
+
+function remoteAssistanceRoomBody(token: string) {
+  return {
+    code: 0,
+    data: {
+      control_id: "control-1",
+      device_name: "Partner PC",
+      room_config: {
+        token,
+        signaling_server: "wss://assist.example",
+        ws_connect_timeout_ms: 12000,
+        streamer_retry_delta_ms: 900,
+        report_token: "assist-report-token",
+        report_url: "https://report.example/qos",
+      },
+    },
+  };
 }

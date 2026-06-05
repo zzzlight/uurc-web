@@ -9,6 +9,11 @@ import {
 describe("UU proxy shared helpers", () => {
   it("keeps Node and Cloudflare proxy validation consistent", () => {
     expect(() => assertAllowedUuApiPath("/api/v1/device/groups/of/my")).not.toThrow();
+    expect(() => assertAllowedUuApiPath("/api/v2/room/share/control_mode")).not.toThrow();
+    expect(() => assertAllowedUuApiPath("/api/v2/room/join/share/by_code")).not.toThrow();
+    expect(() => assertAllowedUuApiPath("/api/v2/room/join/share/by_confirmation")).not.toThrow();
+    expect(() => assertAllowedUuApiPath("/api/v2/room/share/cancel_remote_assist")).not.toThrow();
+    expect(() => assertAllowedUuApiPath("/api/v2/room/share/unknown")).toThrow("Unsupported UU API path");
     expect(() => assertAllowedUuApiPath("https://api.nrd.nie.163.com/api/v1/device/groups/of/my")).toThrow(
       "Unsupported UU API path",
     );

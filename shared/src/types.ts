@@ -164,10 +164,46 @@ export interface RoomJoinResult {
   };
 }
 
+export type RoomJoinKind = "owned_device" | "remote_assistance";
+
+export type RemoteAssistanceControlMode = "by_password" | "by_confirmation" | "password_confirmation";
+
 export interface RemoteRoomJoinContext {
   capturedAt: string;
+  kind?: RoomJoinKind;
   deviceId: string;
   forceJoin: boolean;
+  connectId?: string;
+  connectCodeProvided?: boolean;
+  controlId?: string;
+  controlMode?: RemoteAssistanceControlMode | null;
+  deviceName?: string;
+}
+
+export interface RemoteAssistanceJoinInput {
+  connectId: string;
+  connectCode?: string;
+  controlId?: string;
+  controlMode?: RemoteAssistanceControlMode | null;
+}
+
+export interface RemoteAssistanceJoinResult extends RoomJoinResult {
+  assistance: {
+    connectId: string;
+    connectCodeProvided: boolean;
+    confirmationRequired: boolean;
+    usedConfirmation: boolean;
+    controlId?: string;
+    controlMode?: RemoteAssistanceControlMode | null;
+    deviceName?: string;
+  };
+}
+
+export interface RemoteAssistanceControlModeResult {
+  upstream: RoomJoinUpstreamSummary;
+  connectId: string;
+  canRemoteControl: boolean;
+  controlMode: RemoteAssistanceControlMode | null;
 }
 
 export interface RoomAppFlagUpdateInput {

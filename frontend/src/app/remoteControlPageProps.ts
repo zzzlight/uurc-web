@@ -81,6 +81,7 @@ export interface RemoteControlPageProps {
   sdpTransportMode: SdpTransportMode;
   selectedDevice: UuDevice | null;
   selectedDeviceId: string;
+  selectedTargetLabel: string;
   selectedDeviceOccupied: boolean;
   selectedParticipants: UuParticipantInfo[];
   selfDeviceBlockedReason: string;

@@ -1,7 +1,14 @@
 const BLOCKED_PROXY_HEADERS = new Set(["host", "connection", "content-length", "transfer-encoding"]);
+const ALLOWED_V2_ROOM_PATHS = new Set([
+  "/api/v2/room/join/share/by_code",
+  "/api/v2/room/join/share/by_confirmation",
+  "/api/v2/room/share/control_mode",
+  "/api/v2/room/share/cancel_remote_assist",
+]);
 
 export function assertAllowedUuApiPath(path: string): void {
-  if (!path.startsWith("/api/v1/")) {
+  const pathOnly = path.split("?")[0] ?? path;
+  if (!path.startsWith("/api/v1/") && !ALLOWED_V2_ROOM_PATHS.has(pathOnly)) {
     throw new Error(`Unsupported UU API path: ${path}`);
   }
   if (/^https?:\/\//i.test(path) || path.includes("..")) {

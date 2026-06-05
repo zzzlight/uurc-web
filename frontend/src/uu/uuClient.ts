@@ -13,6 +13,10 @@ import type {
   AuthStatus,
   LoginState,
   MobileLoginResult,
+  RemoteAssistanceControlMode,
+  RemoteAssistanceControlModeResult,
+  RemoteAssistanceJoinInput,
+  RemoteAssistanceJoinResult,
   RemoteControlBootstrap,
   RoomAppFlagUpdateInput,
   RoomAppFlagUpdateResult,
@@ -34,8 +38,15 @@ import {
   patchStoredLoginState,
 } from "./loginStateStore.js";
 import { createSyntheticAndroidProfile } from "./profile.js";
-import { clearRoomSession, getRoomSession, saveRoomJoinResult, summarizeUpstreamForClient } from "./roomSessionStore.js";
+import { clearRoomSession, getRoomSession, saveRemoteAssistanceRoomJoinResult, saveRoomJoinResult, summarizeUpstreamForClient } from "./roomSessionStore.js";
 import { buildSignedHeaders, assertAllowedUuApiPath } from "./signing.js";
+
+const REMOTE_ASSISTANCE_CONFIRMATION_REQUIRED_CODE = 0x470;
+const REMOTE_ASSISTANCE_CONTROL_MODES = new Set<RemoteAssistanceControlMode>([
+  "by_password",
+  "by_confirmation",
+  "password_confirmation",
+]);
 
 export class BrowserUuClient {
   constructor(private readonly transport: UuTransport = new LocalProxyTransport()) {}
@@ -211,6 +222,75 @@ export async function clearRoomByDevice(deviceId: string): Promise<RoomJoinUpstr
   return summarizeUpstreamForClient(upstream);
 }
 
+export async function getRemoteAssistanceControlMode(connectId: string): Promise<RemoteAssistanceControlModeResult> {
+  const normalizedConnectId = normalizeRemoteAssistanceConnectId(connectId);
+  const upstream = await uuApi.signedRequest({
+    method: "POST",
+    path: "/api/v2/room/share/control_mode",
+    body: { connect_id: normalizedConnectId },
+  });
+  const body = asRecord(upstream.body);
+  const data = asRecord(body?.data) ?? body;
+
+  return {
+    upstream: summarizeUpstreamForClient(upstream),
+    connectId: normalizedConnectId,
+    canRemoteControl: data?.can_remote_control === true,
+    controlMode: remoteAssistanceControlModeValue(data?.control_mode),
+  };
+}
+
+export async function joinRemoteAssistanceByCode(input: RemoteAssistanceJoinInput): Promise<RemoteAssistanceJoinResult> {
+  const connectId = normalizeRemoteAssistanceConnectId(input.connectId);
+  const connectCode = normalizeRemoteAssistanceConnectCode(input.connectCode);
+  const upstream = await uuApi.signedRequest({
+    method: "POST",
+    path: "/api/v2/room/join/share/by_code",
+    body: {
+      connect_id: connectId,
+      connect_code: connectCode,
+    },
+  });
+  return buildRemoteAssistanceJoinResult({
+    connectId,
+    connectCodeProvided: true,
+    controlId: input.controlId,
+    controlMode: input.controlMode,
+    upstream,
+    usedConfirmation: false,
+  });
+}
+
+export async function joinRemoteAssistanceByConfirmation(input: RemoteAssistanceJoinInput): Promise<RemoteAssistanceJoinResult> {
+  const connectId = normalizeRemoteAssistanceConnectId(input.connectId);
+  const controlId = normalizeOptionalString(input.controlId);
+  const upstream = await uuApi.signedRequest({
+    method: "POST",
+    path: "/api/v2/room/join/share/by_confirmation",
+    body: {
+      connect_id: connectId,
+      ...(controlId ? { control_id: controlId } : {}),
+    },
+  });
+  return buildRemoteAssistanceJoinResult({
+    connectId,
+    connectCodeProvided: Boolean(input.connectCode?.trim()),
+    controlId,
+    controlMode: input.controlMode,
+    upstream,
+    usedConfirmation: true,
+  });
+}
+
+export async function cancelRemoteAssistance(connectId: string): Promise<RoomJoinUpstreamSummary> {
+  const upstream = await uuApi.signedRequest({
+    method: "POST",
+    path: "/api/v2/room/share/cancel_remote_assist",
+    body: { connect_id: normalizeRemoteAssistanceConnectId(connectId) },
+  });
+  return summarizeUpstreamForClient(upstream);
+}
+
 export async function updateRoomAppFlag(input: RoomAppFlagUpdateInput): Promise<RoomAppFlagUpdateResult> {
   const upstream = await uuApi.signedRequest({
     method: "POST",
@@ -273,6 +353,92 @@ function normalizeMobileLoginInput(input: { regionCode: string; mobile: string; 
     throw new Error("code is required");
   }
   return { ...normalized, code };
+}
+
+function normalizeRemoteAssistanceConnectId(connectId: string): string {
+  const normalized = connectId.trim();
+  if (!normalized) {
+    throw new Error("请输入伙伴的设备 ID");
+  }
+  if (!/^\d{6,12}$/.test(normalized)) {
+    throw new Error("伙伴设备 ID 应为 6-12 位数字");
+  }
+  return normalized;
+}
+
+function normalizeRemoteAssistanceConnectCode(connectCode: string | undefined): string {
+  const normalized = connectCode?.trim() ?? "";
+  if (!normalized) {
+    throw new Error("请输入伙伴的设备验证码");
+  }
+  return normalized;
+}
+
+function normalizeOptionalString(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function buildRemoteAssistanceJoinResult(input: {
+  connectId: string;
+  connectCodeProvided: boolean;
+  controlId?: string;
+  controlMode?: RemoteAssistanceControlMode | null;
+  upstream: UuResponse;
+  usedConfirmation: boolean;
+}): RemoteAssistanceJoinResult {
+  const deviceName = readNestedString(input.upstream.body, "device_name");
+  const controlId = input.controlId ?? readNestedString(input.upstream.body, "control_id");
+  const result = saveRemoteAssistanceRoomJoinResult({
+    connectId: input.connectId,
+    connectCodeProvided: input.connectCodeProvided,
+    controlId,
+    controlMode: input.controlMode,
+    deviceName,
+    upstream: input.upstream,
+  });
+  const responseCode = result.upstream.body.code;
+
+  return {
+    ...result,
+    assistance: {
+      connectId: input.connectId,
+      connectCodeProvided: input.connectCodeProvided,
+      confirmationRequired: responseCode === REMOTE_ASSISTANCE_CONFIRMATION_REQUIRED_CODE,
+      usedConfirmation: input.usedConfirmation,
+      controlId,
+      controlMode: input.controlMode,
+      deviceName,
+    },
+  };
+}
+
+function remoteAssistanceControlModeValue(value: unknown): RemoteAssistanceControlMode | null {
+  if (typeof value !== "string") return null;
+  return REMOTE_ASSISTANCE_CONTROL_MODES.has(value as RemoteAssistanceControlMode) ? (value as RemoteAssistanceControlMode) : null;
+}
+
+function readNestedString(value: unknown, key: string): string | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const direct = record[key];
+  if (typeof direct === "string" && direct.trim()) return direct;
+  for (const child of Object.values(record)) {
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        const found = readNestedString(item, key);
+        if (found) return found;
+      }
+      continue;
+    }
+    const found = readNestedString(child, key);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
 }
 
 function assertUpstreamOk(body: unknown): void {

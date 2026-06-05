@@ -1,3 +1,5 @@
+import type { RemoteAssistanceControlMode, RoomJoinKind } from "@uurc/shared/types";
+
 import type { BrowserRemoteVideoElementSample } from "../remote/browserRemoteSession.js";
 
 export type BusyAction =
@@ -7,6 +9,7 @@ export type BusyAction =
   | "send-mobile-code"
   | "mobile-login"
   | "devices"
+  | "assistance"
   | "join"
   | "logout"
   | "signal-start"
@@ -22,9 +25,15 @@ export type ConnectionRouteMode = "auto" | "relay";
 export type RemoteStageViewMode = "fit" | "fill";
 
 export type RoomJoinContext = {
+  kind: RoomJoinKind;
   deviceId: string;
   forceJoin: boolean;
   occupiedAtJoin: boolean;
+  connectId?: string;
+  connectCodeProvided?: boolean;
+  controlId?: string;
+  controlMode?: RemoteAssistanceControlMode | null;
+  deviceName?: string;
 };
 
 export type RemoteVideoStream = {

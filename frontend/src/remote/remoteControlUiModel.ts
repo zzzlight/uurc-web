@@ -5,6 +5,7 @@ import type {
   RemoteControlBootstrap,
   RemoteSignalGatewayEvent,
   RemoteSignalGatewayStatus,
+  RemoteAssistanceControlMode,
   RoomJoinResult,
 } from "@uurc/shared/types";
 
@@ -79,6 +80,7 @@ export function getNextAction(input: {
   loggedIn: boolean;
   forceJoin: boolean;
   roomJoinedForSelectedDevice: boolean;
+  remoteAssistanceTarget: boolean;
   roomRequiresTakeover: boolean;
   selectedDeviceId: string;
   selectedDeviceIsCurrentAuthDevice: boolean;
@@ -92,7 +94,7 @@ export function getNextAction(input: {
       disabled: input.busy !== null,
     };
   }
-  if (input.deviceTotal === 0 || !input.selectedDeviceId) {
+  if (!input.selectedDeviceId || (!input.remoteAssistanceTarget && input.deviceTotal === 0)) {
     return {
       label: "刷新设备",
       detail: "刷新设备",
@@ -383,6 +385,10 @@ export function toRemoteKeyValue(event: KeyboardEvent): string | number {
 
 export function formatRoomJoinContext(context: RemoteControlBootstrap["joinContext"]): string {
   if (!context) return "-";
+  if (context.kind === "remote_assistance") {
+    const mode = formatRemoteAssistanceMode(context.controlMode);
+    return mode ? `远程协助 · ${mode}` : "远程协助";
+  }
   return context.forceJoin ? "接管加入" : "普通加入";
 }
 
@@ -390,10 +396,12 @@ export function formatRoomReleaseState(
   status: RemoteSignalGatewayStatus | null,
   activeRemoteSession: boolean,
   selectedDeviceOccupied: boolean,
+  context?: RemoteControlBootstrap["joinContext"] | null,
 ): string {
   if (status?.roomClear) {
     const code = status.roomClear.body.code;
-    return code === undefined || code === 0 ? "已释放房间" : `释放返回 ${code}`;
+    const action = context?.kind === "remote_assistance" ? "已取消协助" : "已释放房间";
+    return code === undefined || code === 0 ? action : `释放返回 ${code}`;
   }
   if (status?.roomClearError) return "释放失败";
   if (activeRemoteSession) return "控制中";
@@ -401,13 +409,32 @@ export function formatRoomReleaseState(
   return "-";
 }
 
-export function formatRoomReleaseDetail(status: RemoteSignalGatewayStatus | null): string {
+export function formatRoomReleaseDetail(
+  status: RemoteSignalGatewayStatus | null,
+  context?: RemoteControlBootstrap["joinContext"] | null,
+): string {
   if (status?.roomClearError) return status.roomClearError;
   if (status?.roomClear) {
     const message = status.roomClear.body.msg ? ` · ${status.roomClear.body.msg}` : "";
-    return `/api/v1/room/clear/by_device${message}`;
+    const endpoint = context?.kind === "remote_assistance"
+      ? "/api/v2/room/share/cancel_remote_assist"
+      : "/api/v1/room/clear/by_device";
+    return `${endpoint}${message}`;
   }
-  return "断开连接时释放 UU 房间占用";
+  return context?.kind === "remote_assistance" ? "断开连接时取消本次远程协助" : "断开连接时释放 UU 房间占用";
+}
+
+export function formatRemoteAssistanceMode(mode: RemoteAssistanceControlMode | null | undefined): string {
+  switch (mode) {
+    case "by_password":
+      return "验证码";
+    case "by_confirmation":
+      return "对方确认";
+    case "password_confirmation":
+      return "验证码或确认";
+    default:
+      return "";
+  }
 }
 
 export function formatInboundVideoStats(stats: BrowserRemoteSessionState["inboundVideo"]): string {

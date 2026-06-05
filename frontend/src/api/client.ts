@@ -15,19 +15,26 @@ import type {
   RoomJoinUpstreamSummary,
   RoomJoinResult,
   RuntimeProfile,
+  RemoteAssistanceControlModeResult,
+  RemoteAssistanceJoinInput,
+  RemoteAssistanceJoinResult,
   UuDeviceGroups,
   UuResponse,
 } from "@uurc/shared/types";
 import {
+  cancelRemoteAssistance as cancelRemoteAssistanceViaFrontend,
   clearRoomByDevice as clearRoomByDeviceViaFrontend,
   clearAuthState as clearAuthStateFromFrontend,
   createMobileDevice as createMobileDeviceViaFrontend,
   exportAuthState as exportAuthStateFromFrontend,
   getAuthStatus as getAuthStatusFromFrontend,
   getDeviceGroups as getDeviceGroupsViaFrontend,
+  getRemoteAssistanceControlMode as getRemoteAssistanceControlModeViaFrontend,
   getRemoteBootstrap as getRemoteBootstrapFromFrontend,
   getRemoteSignalStartContext,
   importAuthState as importAuthStateToFrontend,
+  joinRemoteAssistanceByCode as joinRemoteAssistanceByCodeViaFrontend,
+  joinRemoteAssistanceByConfirmation as joinRemoteAssistanceByConfirmationViaFrontend,
   joinRoomByDevice as joinRoomByDeviceViaFrontend,
   loginByMobile as loginByMobileViaFrontend,
   sendMobileCode as sendMobileCodeViaFrontend,
@@ -80,6 +87,22 @@ export async function joinRoomByDevice(deviceId: string, forceJoin: boolean): Pr
 
 export async function clearRoomByDevice(deviceId: string): Promise<RoomJoinUpstreamSummary> {
   return clearRoomByDeviceViaFrontend(deviceId);
+}
+
+export async function getRemoteAssistanceControlMode(connectId: string): Promise<RemoteAssistanceControlModeResult> {
+  return getRemoteAssistanceControlModeViaFrontend(connectId);
+}
+
+export async function joinRemoteAssistanceByCode(input: RemoteAssistanceJoinInput): Promise<RemoteAssistanceJoinResult> {
+  return joinRemoteAssistanceByCodeViaFrontend(input);
+}
+
+export async function joinRemoteAssistanceByConfirmation(input: RemoteAssistanceJoinInput): Promise<RemoteAssistanceJoinResult> {
+  return joinRemoteAssistanceByConfirmationViaFrontend(input);
+}
+
+export async function cancelRemoteAssistance(connectId: string): Promise<RoomJoinUpstreamSummary> {
+  return cancelRemoteAssistanceViaFrontend(connectId);
 }
 
 export async function updateRoomAppFlag(input: RoomAppFlagUpdateInput): Promise<RoomAppFlagUpdateResult> {

@@ -4,23 +4,36 @@ import type { AuthStatus, UuDeviceGroups } from "@uurc/shared/types";
 
 import { DeviceSection } from "./DeviceControls.js";
 import { Panel } from "./Panel.js";
+import { RemoteAssistanceCard } from "./RemoteAssistanceCard.js";
 
 export function DeviceCatalogPanel({
   authStatus,
   busy,
   devices,
   selectedDeviceId,
+  assistanceConnectId,
+  assistanceConnectCode,
+  assistanceNotice,
   onLoadDevices,
   onOpenDevice,
   onSelectDevice,
+  onAssistanceConnectIdChange,
+  onAssistanceConnectCodeChange,
+  onStartRemoteAssistance,
 }: {
   authStatus: AuthStatus | null;
   busy: string | null;
   devices: UuDeviceGroups;
   selectedDeviceId: string;
+  assistanceConnectId: string;
+  assistanceConnectCode: string;
+  assistanceNotice: string;
   onLoadDevices: () => void;
   onOpenDevice: (deviceId: string) => void;
   onSelectDevice: (deviceId: string) => void;
+  onAssistanceConnectIdChange: (value: string) => void;
+  onAssistanceConnectCodeChange: (value: string) => void;
+  onStartRemoteAssistance: () => void;
 }) {
   return (
     <Panel
@@ -37,6 +50,15 @@ export function DeviceCatalogPanel({
       <DeviceSection title="桌面端" devices={devices.desktopDevices} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
       <DeviceSection title="移动端" devices={devices.mobileDevices} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
       <DeviceSection title="TV" devices={devices.tvDevices} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
+      <RemoteAssistanceCard
+        busy={busy}
+        connectCode={assistanceConnectCode}
+        connectId={assistanceConnectId}
+        notice={assistanceNotice}
+        onConnectCodeChange={onAssistanceConnectCodeChange}
+        onConnectIdChange={onAssistanceConnectIdChange}
+        onStart={onStartRemoteAssistance}
+      />
     </Panel>
   );
 }

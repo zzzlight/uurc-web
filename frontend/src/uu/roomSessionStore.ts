@@ -3,6 +3,7 @@ import {
   summarizeStreamerRoomConfig,
 } from "@uurc/shared/roomConfig";
 import type {
+  RemoteAssistanceControlMode,
   RemoteRoomJoinContext,
   RoomJoinResult,
   RoomJoinUpstreamSummary,
@@ -24,19 +25,52 @@ export function saveRoomJoinResult(input: {
   forceJoin: boolean;
   upstream: UuResponse;
 }): RoomJoinResult {
+  return saveRoomSessionResult({
+    upstream: input.upstream,
+    joinContext: {
+      capturedAt: new Date().toISOString(),
+      kind: "owned_device",
+      deviceId: input.deviceId,
+      forceJoin: input.forceJoin,
+    },
+  });
+}
+
+export function saveRemoteAssistanceRoomJoinResult(input: {
+  connectId: string;
+  connectCodeProvided: boolean;
+  controlId?: string;
+  controlMode?: RemoteAssistanceControlMode | null;
+  deviceName?: string;
+  upstream: UuResponse;
+}): RoomJoinResult {
+  return saveRoomSessionResult({
+    upstream: input.upstream,
+    joinContext: {
+      capturedAt: new Date().toISOString(),
+      kind: "remote_assistance",
+      deviceId: input.connectId,
+      forceJoin: false,
+      connectId: input.connectId,
+      connectCodeProvided: input.connectCodeProvided,
+      controlId: input.controlId,
+      controlMode: input.controlMode,
+      deviceName: input.deviceName,
+    },
+  });
+}
+
+function saveRoomSessionResult(input: {
+  upstream: UuResponse;
+  joinContext: RemoteRoomJoinContext;
+}): RoomJoinResult {
   const roomConfig = normalizeStreamerRoomConfig(input.upstream.body);
   const upstream = summarizeUpstreamForClient(input.upstream);
-  const capturedAt = new Date().toISOString();
-  const joinContext: RemoteRoomJoinContext = {
-    capturedAt,
-    deviceId: input.deviceId,
-    forceJoin: input.forceJoin,
-  };
 
   if (roomConfig) {
     const session: BrowserRoomSession = {
-      capturedAt,
-      joinContext,
+      capturedAt: input.joinContext.capturedAt,
+      joinContext: input.joinContext,
       roomConfig,
       upstream,
     };

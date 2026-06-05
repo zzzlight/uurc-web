@@ -851,6 +851,7 @@ export interface EncodeStreamerConnectOptionsInput {
 
 export interface BuildDefaultStreamerConnectOptionsBase64Input {
   deviceId: string;
+  controlConnectType?: number;
   fps?: number;
   videoQuality?: number;
   cursorCapture?: boolean;
@@ -959,7 +960,7 @@ export function buildDefaultStreamerConnectOptionsBase64(input: BuildDefaultStre
     decoderCapList: [buildDefaultStreamerDecoderCap()],
     virtualDisplayModes: input.virtualDisplayModes ?? [STREAMER_DEFAULT_BROWSER_VIRTUAL_DISPLAY_MODE],
     clientType: STREAMER_CLIENT_TYPES.Client_ANDROID,
-    controlConnectType: STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Normal,
+    controlConnectType: input.controlConnectType ?? STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Normal,
     featureFlags: STREAMER_DEFAULT_FEATURE_FLAGS,
     clientVersion: STREAMER_APP_CLIENT_VERSION,
   });

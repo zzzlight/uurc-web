@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeRemoteSignalReadiness } from "@uurc/shared/streamerProtocol";
+import {
+  STREAMER_CONTROL_CONNECT_TYPES,
+  analyzeRemoteSignalReadiness,
+  buildDefaultStreamerConnectOptionsBase64,
+} from "@uurc/shared/streamerProtocol";
 import App from "../src/App.js";
 import type { BrowserRemoteSessionState } from "../src/remote/browserRemoteSession.js";
 import { getRemoteConnectionQuality } from "../src/remote/remoteControlUiModel.js";
@@ -162,6 +166,55 @@ describe("App console", () => {
     expect(screen.getByRole("button", { name: "返回设备列表" })).toBeInTheDocument();
     expect(screen.getByText("控制设置")).toBeInTheDocument();
     expect(screen.getByText("调试信息")).toBeInTheDocument();
+  });
+
+  it("starts a partner remote-assistance session by device ID and code", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    await user.type(screen.getByLabelText("伙伴的设备 ID"), "982123456");
+    await user.type(screen.getByLabelText("伙伴的设备验证码"), "L6026CCD");
+    await user.click(screen.getByRole("button", { name: /^连接$/ }));
+
+    await screen.findByRole("heading", { name: "Partner PC" });
+    expect(window.location.pathname).toBe("/devices/982123456/control");
+    expect(uuCalls("/api/v2/room/share/control_mode")).toHaveLength(1);
+    expect(uuCalls("/api/v2/room/join/share/by_code")).toHaveLength(1);
+    expect(screen.getAllByText("远程协助 · 验证码").length).toBeGreaterThan(0);
+
+    await startCompatibleConnection(user);
+
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/start")).toHaveLength(1);
+    });
+    const startCall = requestLog.find((call) => call.path === "/api/remote/signal/start");
+    expect(startCall?.body).toHaveProperty("roomConfig.token", "assist-room-token");
+    expect(startCall?.body).toHaveProperty("joinContext.kind", "remote_assistance");
+    expect(startCall?.body).toHaveProperty("joinContext.connectId", "982123456");
+
+    await waitFor(() => {
+      expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
+    });
+    const controlCall = requestLog.find((call) => call.path === "/api/remote/signal/control");
+    expect(controlCall?.body).toMatchObject({
+      appDataBase64: buildDefaultStreamerConnectOptionsBase64({
+        deviceId: "web-device-1",
+        controlConnectType: STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Assistance,
+      }),
+    });
+
+    await user.click(screen.getByRole("button", { name: "断开连接" }));
+
+    await waitFor(() => {
+      expect(requestLog.some((call) => call.method === "DELETE" && call.path === "/api/remote/signal")).toBe(true);
+    });
+    await waitFor(() => {
+      expect(uuCalls("/api/v2/room/share/cancel_remote_assist")).toHaveLength(1);
+    });
+    expect(screen.getAllByText("已取消协助").length).toBeGreaterThan(0);
   });
 
   it("preserves a control page deep link while restoring login state on refresh", async () => {
@@ -1237,9 +1290,11 @@ async function handleFetch(input: string | URL | Request, init?: RequestInit): P
   }
 
   if (path === "/api/remote/signal/start" && method === "POST") {
+    const joinContext = body.joinContext as { kind?: string; deviceId?: string } | undefined;
+    const remoteAssistance = joinContext?.kind === "remote_assistance";
     expect(body).toMatchObject({ gzipSdp: false });
-    expect(body).toHaveProperty("roomConfig.token", "room-token-1");
-    expect(body).toHaveProperty("joinContext.deviceId", "desktop-1");
+    expect(body).toHaveProperty("roomConfig.token", remoteAssistance ? "assist-room-token" : "room-token-1");
+    expect(body).toHaveProperty("joinContext.deviceId", remoteAssistance ? "982123456" : "desktop-1");
     if (signalStartError) {
       return jsonResponse({
         status: "error",
@@ -1509,6 +1564,59 @@ async function handleUuProxyFetch(body: unknown): Promise<Response> {
   }
 
   if (request.path === "/api/v1/room/clear/by_device/desktop-1" && request.method === "POST") {
+    return jsonResponse(uuResponse({ code: 0, msg: "ok" }));
+  }
+
+  if (request.path === "/api/v2/room/share/control_mode" && request.method === "POST") {
+    expect(request.body).toEqual({ connect_id: "982123456" });
+    return jsonResponse(uuResponse({
+      code: 0,
+      data: {
+        can_remote_control: true,
+        control_mode: "by_password",
+      },
+    }));
+  }
+
+  if (request.path === "/api/v2/room/join/share/by_code" && request.method === "POST") {
+    expect(request.body).toEqual({ connect_id: "982123456", connect_code: "L6026CCD" });
+    return jsonResponse(uuResponse({
+      code: 0,
+      data: {
+        control_id: "assist-control-1",
+        device_name: "Partner PC",
+        room_config: {
+          token: "assist-room-token",
+          signaling_server: "wss://assist-primary.example",
+          signaling_list: ["wss://assist-primary.example"],
+          ws_connect_timeout_ms: 12000,
+          streamer_retry_delta_ms: 900,
+          report_token: "assist-report-token",
+          report_url: "https://report.example/qos",
+        },
+      },
+    }));
+  }
+
+  if (request.path === "/api/v2/room/join/share/by_confirmation" && request.method === "POST") {
+    expect(request.body).toMatchObject({ connect_id: "982123456" });
+    return jsonResponse(uuResponse({
+      code: 0,
+      data: {
+        control_id: "assist-control-1",
+        device_name: "Partner PC",
+        room_config: {
+          token: "assist-room-token",
+          signaling_server: "wss://assist-primary.example",
+          ws_connect_timeout_ms: 12000,
+          streamer_retry_delta_ms: 900,
+        },
+      },
+    }));
+  }
+
+  if (request.path === "/api/v2/room/share/cancel_remote_assist" && request.method === "POST") {
+    expect(request.body).toEqual({ connect_id: "982123456" });
     return jsonResponse(uuResponse({ code: 0, msg: "ok" }));
   }
 
