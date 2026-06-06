@@ -1012,8 +1012,7 @@ export class BrowserRemoteSession {
 
   private resolveInputDisplayId(): number | undefined {
     if (this.remoteInputDisplayId !== undefined) return this.remoteInputDisplayId;
-    if (isMacPlatform(this.targetPlatform)) return this.remoteDisplayId;
-    return undefined;
+    return this.remoteDisplayId;
   }
 
   private buildMouseMoveAbsoluteInput(input: BrowserRemoteMousePositionInput): string {

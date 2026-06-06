@@ -256,6 +256,7 @@ export async function joinRemoteAssistanceByCode(input: RemoteAssistanceJoinInpu
     connectCodeProvided: true,
     controlId: input.controlId,
     controlMode: input.controlMode,
+    targetPlatform: input.targetPlatform,
     upstream,
     usedConfirmation: false,
   });
@@ -277,6 +278,7 @@ export async function joinRemoteAssistanceByConfirmation(input: RemoteAssistance
     connectCodeProvided: Boolean(input.connectCode?.trim()),
     controlId,
     controlMode: input.controlMode,
+    targetPlatform: input.targetPlatform,
     upstream,
     usedConfirmation: true,
   });
@@ -384,10 +386,15 @@ function buildRemoteAssistanceJoinResult(input: {
   connectCodeProvided: boolean;
   controlId?: string;
   controlMode?: RemoteAssistanceControlMode | null;
+  targetPlatform?: number;
   upstream: UuResponse;
   usedConfirmation: boolean;
 }): RemoteAssistanceJoinResult {
   const deviceName = readNestedString(input.upstream.body, "device_name");
+  const targetPlatform = input.targetPlatform
+    ?? readNestedNumber(input.upstream.body, "platform")
+    ?? readNestedNumber(input.upstream.body, "device_platform")
+    ?? readNestedNumber(input.upstream.body, "publisher_platform");
   const controlId = input.controlId ?? readNestedString(input.upstream.body, "control_id");
   const result = saveRemoteAssistanceRoomJoinResult({
     connectId: input.connectId,
@@ -395,6 +402,7 @@ function buildRemoteAssistanceJoinResult(input: {
     controlId,
     controlMode: input.controlMode,
     deviceName,
+    targetPlatform,
     upstream: input.upstream,
   });
   const responseCode = result.upstream.body.code;
@@ -409,6 +417,7 @@ function buildRemoteAssistanceJoinResult(input: {
       controlId,
       controlMode: input.controlMode,
       deviceName,
+      targetPlatform,
     },
   };
 }
@@ -433,6 +442,29 @@ function readNestedString(value: unknown, key: string): string | undefined {
     }
     const found = readNestedString(child, key);
     if (found) return found;
+  }
+  return undefined;
+}
+
+function readNestedNumber(value: unknown, key: string): number | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const direct = record[key];
+  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+  if (typeof direct === "string" && direct.trim()) {
+    const parsed = Number(direct);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  for (const child of Object.values(record)) {
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        const found = readNestedNumber(item, key);
+        if (found !== undefined) return found;
+      }
+      continue;
+    }
+    const found = readNestedNumber(child, key);
+    if (found !== undefined) return found;
   }
   return undefined;
 }

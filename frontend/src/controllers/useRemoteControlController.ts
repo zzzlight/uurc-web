@@ -91,6 +91,8 @@ import {
 } from "../remote/remoteControlUiModel.js";
 import { useAutoLoadDevices } from "./useAutoLoadDevices.js";
 
+const REMOTE_ASSISTANCE_DEFAULT_TARGET_PLATFORM = 1;
+
 export function useRemoteControlController() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authJson, setAuthJson] = useState("");
@@ -105,6 +107,7 @@ export function useRemoteControlController() {
   const [assistanceConnectId, setAssistanceConnectId] = useState("");
   const [assistanceConnectCode, setAssistanceConnectCode] = useState("");
   const [assistanceNotice, setAssistanceNotice] = useState("");
+  const [assistanceTargetPlatform, setAssistanceTargetPlatform] = useState<number>(REMOTE_ASSISTANCE_DEFAULT_TARGET_PLATFORM);
   const [roomResponse, setRoomResponse] = useState<RoomJoinResult | null>(null);
   const [roomJoinContext, setRoomJoinContext] = useState<RoomJoinContext | null>(null);
   const [signalGatewayContext, setSignalGatewayContext] = useState<RoomJoinContext | null>(null);
@@ -250,6 +253,7 @@ export function useRemoteControlController() {
       setAssistanceConnectId("");
       setAssistanceConnectCode("");
       setAssistanceNotice("");
+      setAssistanceTargetPlatform(REMOTE_ASSISTANCE_DEFAULT_TARGET_PLATFORM);
       setRoomResponse(null);
       setRoomJoinContext(null);
       setSignalGatewayContext(null);
@@ -334,6 +338,7 @@ export function useRemoteControlController() {
           connectId,
           connectCode,
           controlMode: modeResult.controlMode,
+          targetPlatform: assistanceTargetPlatform,
         });
         if (!joined.roomConfigSummary && joined.assistance.confirmationRequired) {
           setAssistanceNotice("伙伴设备要求二次确认，正在等待对方确认...");
@@ -342,6 +347,7 @@ export function useRemoteControlController() {
             connectCode,
             controlId: joined.assistance.controlId,
             controlMode: modeResult.controlMode,
+            targetPlatform: assistanceTargetPlatform,
           });
         }
       } else if (modeResult.controlMode === "by_confirmation") {
@@ -349,6 +355,7 @@ export function useRemoteControlController() {
         joined = await joinRemoteAssistanceByConfirmation({
           connectId,
           controlMode: modeResult.controlMode,
+          targetPlatform: assistanceTargetPlatform,
         });
       } else {
         throw new Error("伙伴设备当前要求输入设备验证码");
@@ -368,6 +375,7 @@ export function useRemoteControlController() {
         controlId: joined.assistance.controlId,
         controlMode: joined.assistance.controlMode,
         deviceName: joined.assistance.deviceName,
+        targetPlatform: joined.assistance.targetPlatform ?? assistanceTargetPlatform,
       };
       setSelectedDeviceId(joined.assistance.connectId);
       setRoomResponse(joined);
@@ -516,7 +524,9 @@ export function useRemoteControlController() {
       streamerData: buildStreamerControlStreamerDataJson({ controlId: appControlId }),
       forceRelay: connectionRouteMode === "relay" ? true : undefined,
       gzipSdp: sdpTransportMode === "gzip",
-      targetPlatform: selectedDevice?.platform,
+      targetPlatform: roomJoinContext?.kind === "remote_assistance"
+        ? roomJoinContext.targetPlatform
+        : selectedDevice?.platform,
     });
     setBrowserRemoteState(state);
     await applyLatestSignalEvents(session);
@@ -946,9 +956,9 @@ export function useRemoteControlController() {
   const browserRtcDescription = browserRemoteState.controlResult ? "连接许可已确认" : "等待连接确认";
   const joinModeLabel = forceJoin ? "接管控制" : "普通加入";
   const roomJoinModeDebugLabel = formatRoomJoinContext(remoteBootstrap?.joinContext);
-  const selectedTargetLabel = selectedDevice?.alias
-    ?? roomJoinContext?.deviceName
-    ?? (roomJoinContext?.kind === "remote_assistance" ? `远程协助 ${roomJoinContext.connectId ?? roomJoinContext.deviceId}` : "远控画面");
+  const selectedTargetLabel = roomJoinContext?.kind === "remote_assistance"
+    ? roomJoinContext.deviceName ?? `远程协助 ${roomJoinContext.connectId ?? roomJoinContext.deviceId}`
+    : selectedDevice?.alias ?? "远控画面";
   const remoteVideoCount = remoteVideoStreams.length;
   const debugEvents = browserRemoteState.debugEvents;
   const hasRemoteVideo = remoteVideoCount > 0;
@@ -1011,6 +1021,7 @@ export function useRemoteControlController() {
     assistanceConnectId,
     assistanceConnectCode,
     assistanceNotice,
+    assistanceTargetPlatform,
     identitySourceLabel,
     identityDeviceLabel,
     error,
@@ -1021,6 +1032,7 @@ export function useRemoteControlController() {
     onOpenDevice: (deviceId: string) => void handleOpenDevice(deviceId),
     onAssistanceConnectIdChange: setAssistanceConnectId,
     onAssistanceConnectCodeChange: setAssistanceConnectCode,
+    onAssistanceTargetPlatformChange: setAssistanceTargetPlatform,
     onStartRemoteAssistance: () => void handleStartRemoteAssistance(),
     onExport: () => void handleExport(),
     onLogout: () => void handleLogout(),

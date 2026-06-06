@@ -34,6 +34,7 @@ export type RoomJoinContext = {
   controlId?: string;
   controlMode?: RemoteAssistanceControlMode | null;
   deviceName?: string;
+  targetPlatform?: number;
 };
 
 export type RemoteVideoStream = {

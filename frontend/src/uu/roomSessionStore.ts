@@ -42,6 +42,7 @@ export function saveRemoteAssistanceRoomJoinResult(input: {
   controlId?: string;
   controlMode?: RemoteAssistanceControlMode | null;
   deviceName?: string;
+  targetPlatform?: number;
   upstream: UuResponse;
 }): RoomJoinResult {
   return saveRoomSessionResult({
@@ -56,6 +57,7 @@ export function saveRemoteAssistanceRoomJoinResult(input: {
       controlId: input.controlId,
       controlMode: input.controlMode,
       deviceName: input.deviceName,
+      targetPlatform: input.targetPlatform,
     },
   });
 }

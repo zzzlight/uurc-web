@@ -1113,7 +1113,7 @@ describe("BrowserRemoteSession", () => {
     ]);
   });
 
-  it("keeps device_capability display ids out of desktop SendToRom input messages", async () => {
+  it("uses device_capability display ids for desktop SendToRom input messages", async () => {
     const api = new FakeRemoteApi();
     const peer = new FakePeerConnection();
     const session = new BrowserRemoteSession({
@@ -1157,6 +1157,7 @@ describe("BrowserRemoteSession", () => {
         sequence: 1,
         timestampMs: 3,
         inputMessage: buildStreamerKeyboardInputMessage({ action: "keyboardPress", value: "A" }),
+        displayId: 1,
       }),
     ]);
     expect(session.getState().debugEvents).toEqual(

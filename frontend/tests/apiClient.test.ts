@@ -197,6 +197,7 @@ describe("frontend API client remote signal helpers", () => {
         connectId: "982123456",
         connectCode: "L6026CCD",
         controlMode: "by_password",
+        targetPlatform: 1,
       }),
     ).resolves.toMatchObject({
       assistance: {
@@ -204,6 +205,7 @@ describe("frontend API client remote signal helpers", () => {
         connectCodeProvided: true,
         controlMode: "by_password",
         deviceName: "Partner PC",
+        targetPlatform: 1,
       },
       roomConfigSummary: {
         signalServers: ["wss://assist.example"],
@@ -214,12 +216,14 @@ describe("frontend API client remote signal helpers", () => {
         connectId: "982123456",
         controlId: "control-1",
         controlMode: "by_confirmation",
+        targetPlatform: 1,
       }),
     ).resolves.toMatchObject({
       assistance: {
         connectId: "982123456",
         controlId: "control-1",
         usedConfirmation: true,
+        targetPlatform: 1,
       },
     });
     await expect(cancelRemoteAssistance("982123456")).resolves.toMatchObject({
@@ -313,6 +317,7 @@ function remoteAssistanceRoomBody(token: string) {
     data: {
       control_id: "control-1",
       device_name: "Partner PC",
+      platform: 1,
       room_config: {
         token,
         signaling_server: "wss://assist.example",

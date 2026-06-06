@@ -175,6 +175,7 @@ describe("App console", () => {
     render(<App />);
 
     await screen.findByRole("heading", { name: "我的设备" });
+    expect(screen.getByLabelText("伙伴设备系统")).toHaveValue("1");
     await user.type(screen.getByLabelText("伙伴的设备 ID"), "982123456");
     await user.type(screen.getByLabelText("伙伴的设备验证码"), "L6026CCD");
     await user.click(screen.getByRole("button", { name: /^连接$/ }));
@@ -194,6 +195,7 @@ describe("App console", () => {
     expect(startCall?.body).toHaveProperty("roomConfig.token", "assist-room-token");
     expect(startCall?.body).toHaveProperty("joinContext.kind", "remote_assistance");
     expect(startCall?.body).toHaveProperty("joinContext.connectId", "982123456");
+    expect(startCall?.body).toHaveProperty("joinContext.targetPlatform", 1);
 
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
@@ -1585,6 +1587,7 @@ async function handleUuProxyFetch(body: unknown): Promise<Response> {
       data: {
         control_id: "assist-control-1",
         device_name: "Partner PC",
+        platform: 1,
         room_config: {
           token: "assist-room-token",
           signaling_server: "wss://assist-primary.example",
@@ -1605,6 +1608,7 @@ async function handleUuProxyFetch(body: unknown): Promise<Response> {
       data: {
         control_id: "assist-control-1",
         device_name: "Partner PC",
+        platform: 1,
         room_config: {
           token: "assist-room-token",
           signaling_server: "wss://assist-primary.example",
