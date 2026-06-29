@@ -4,6 +4,7 @@ import {
   buildStreamerMouseButtonInputMessage,
   buildStreamerKeyboardInputMessage,
   buildStreamerMacKeyboardInputMessage,
+  buildStreamerWindowsKeyboardInputMessage,
   buildStreamerMacMouseMoveAbsoluteInputMessage,
   buildStreamerMacMouseScrollInputMessage,
   buildStreamerMouseMoveAbsoluteInputMessage,
@@ -474,7 +475,7 @@ export class BrowserRemoteSession {
   }
 
   sendMouseScroll(input: BrowserRemoteMouseScrollInput): void {
-    this.sendInputData(isMacPlatform(this.targetPlatform) ? buildStreamerMacMouseScrollInputMessage(input) : buildStreamerMouseScrollInputMessage(input));
+    this.sendInputData(isDesktopPlatform(this.targetPlatform) ? buildStreamerMacMouseScrollInputMessage(input) : buildStreamerMouseScrollInputMessage(input));
   }
 
   sendKeyboardInput(input: BrowserRemoteKeyboardInput): void {
@@ -1055,7 +1056,7 @@ export class BrowserRemoteSession {
     const sequence = this.sequence;
     const timestampSeconds = this.streamerTimestampSeconds();
     const inputDisplayId = this.resolveInputDisplayId();
-    const payload = isMacPlatform(this.targetPlatform)
+    const payload = isDesktopPlatform(this.targetPlatform)
       ? inputMessage
       : encodeStreamerInputMessage({
           sequence,
@@ -1071,7 +1072,7 @@ export class BrowserRemoteSession {
         timestampSeconds,
         inputDisplayId,
         remoteDisplayId: this.remoteDisplayId,
-        route: isMacPlatform(this.targetPlatform) ? "control_text" : "send_to_rom",
+        route: isDesktopPlatform(this.targetPlatform) ? "control_text" : "send_to_rom",
         targetPlatform: this.targetPlatform,
         input: summarizeInputMessage(inputMessage),
       },
@@ -1084,7 +1085,8 @@ export class BrowserRemoteSession {
   }
 
   private buildMouseMoveAbsoluteInput(input: BrowserRemoteMousePositionInput): string {
-    if (isMacPlatform(this.targetPlatform)) {
+    // 桌面被控端(Mac/Windows)都用归一化坐标(abs_x/abs_y ∈ [0,1])；移动端用像素。
+    if (isDesktopPlatform(this.targetPlatform)) {
       return buildStreamerMacMouseMoveAbsoluteInputMessage({
         ...input,
         surfaceWidth: input.surfaceWidth ?? Math.max(1, Math.round(input.absX)),
@@ -1097,6 +1099,9 @@ export class BrowserRemoteSession {
   private buildKeyboardInput(input: BrowserRemoteKeyboardInput): string {
     if (isMacPlatform(this.targetPlatform)) {
       return buildStreamerMacKeyboardInputMessage(input);
+    }
+    if (isWindowsPlatform(this.targetPlatform)) {
+      return buildStreamerWindowsKeyboardInputMessage(input);
     }
     return buildStreamerKeyboardInputMessage(input);
   }
@@ -1665,6 +1670,15 @@ function bytesToHexPrefix(bytes: Uint8Array | undefined): string | undefined {
 
 function isMacPlatform(platform: number | undefined): boolean {
   return platform === 4;
+}
+
+function isWindowsPlatform(platform: number | undefined): boolean {
+  return platform === 1;
+}
+
+// 桌面被控端(Mac/Windows)输入走「裸 JSON + 归一化坐标」；移动端(安卓/MuMu)走「protobuf + 像素」。
+function isDesktopPlatform(platform: number | undefined): boolean {
+  return isMacPlatform(platform) || isWindowsPlatform(platform);
 }
 
 function assignString<T extends object, K extends keyof T>(target: T, key: K, value: unknown): void {

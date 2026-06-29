@@ -16,6 +16,7 @@ import {
   buildStreamerMacKeyboardInputMessage,
   buildStreamerMacMouseMoveAbsoluteInputMessage,
   buildStreamerMacMouseScrollInputMessage,
+  buildStreamerWindowsKeyboardInputMessage,
   buildStreamerMouseMoveAbsoluteInputMessage,
   buildStreamerMouseScrollInputMessage,
   encodeStreamerEchoResponseMessage,
@@ -1047,6 +1048,41 @@ describe("BrowserRemoteSession", () => {
         surfaceHeight: 1080,
       }),
       buildStreamerMacKeyboardInputMessage({ action: "keyboardPress", value: 59 }),
+      buildStreamerMacMouseScrollInputMessage({ deltaX: 0, deltaY: -120 }),
+    ]);
+  });
+
+  it("transforms browser input through the Windows server keymap shape for Windows targets", async () => {
+    const api = new FakeRemoteApi();
+    const peer = new FakePeerConnection();
+    const session = new BrowserRemoteSession({
+      api,
+      createPeerConnection: (configuration) => {
+        peer.configuration = configuration;
+        return peer;
+      },
+      now: () => 2600,
+    });
+    await session.start({
+      appControlId: "control-1",
+      appDataBase64: "Cg==",
+      streamerData: "{}",
+      targetPlatform: 1,
+    });
+
+    session.sendMouseMove({ absX: 384, absY: 1037, surfaceWidth: 1920, surfaceHeight: 1080 });
+    session.sendKeyboardInput({ action: "keyboardPress", value: 113 });
+    session.sendMouseScroll({ deltaX: 0, deltaY: -120 });
+
+    // Windows 是桌面被控端:与 Mac 一样走「裸 JSON(非 protobuf)+ 归一化坐标」，键码换成 Windows VK。
+    expect(peer.channels.get(STREAMER_DATA_CHANNEL_LABELS.control)?.sent).toEqual([
+      buildStreamerMacMouseMoveAbsoluteInputMessage({
+        absX: 384,
+        absY: 1037,
+        surfaceWidth: 1920,
+        surfaceHeight: 1080,
+      }),
+      buildStreamerWindowsKeyboardInputMessage({ action: "keyboardPress", value: 113 }),
       buildStreamerMacMouseScrollInputMessage({ deltaX: 0, deltaY: -120 }),
     ]);
   });

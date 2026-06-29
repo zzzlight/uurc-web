@@ -52,6 +52,7 @@ import {
   buildStreamerMacKeyboardInputMessage,
   buildStreamerMacMouseMoveAbsoluteInputMessage,
   buildStreamerMacMouseScrollInputMessage,
+  buildStreamerWindowsKeyboardInputMessage,
   buildStreamerMouseButtonInputMessage,
   buildStreamerMouseMoveAbsoluteInputMessage,
   buildStreamerMouseScrollInputMessage,
@@ -1184,6 +1185,25 @@ describe("streamer protocol constants", () => {
       '{"action":"kbd_release","key":0}',
     );
     expect(buildStreamerMacKeyboardInputMessage({ action: "keyboardPress", value: "A" })).toBe("");
+  });
+
+  it("builds verified Android-to-Windows keyboard output messages (VK codes + interrept)", () => {
+    // 与真机抓包一致:key 为 Windows VK，且带 interrept 字段。
+    // ControlLeft(android 113)→ VK_LCONTROL 162;A(29)→ 65;Backspace(67)→ VK_BACK 8;MetaLeft(117)→ VK_LWIN 91。
+    expect(buildStreamerWindowsKeyboardInputMessage({ action: "keyboardPress", value: 113 })).toBe(
+      '{"action":"kbd_press","key":162,"interrept":true}',
+    );
+    expect(buildStreamerWindowsKeyboardInputMessage({ action: "keyboardPress", value: 29 })).toBe(
+      '{"action":"kbd_press","key":65,"interrept":true}',
+    );
+    expect(buildStreamerWindowsKeyboardInputMessage({ action: "keyboardRelease", value: 67 })).toBe(
+      '{"action":"kbd_release","key":8,"interrept":true}',
+    );
+    expect(buildStreamerWindowsKeyboardInputMessage({ action: "keyboardPress", value: 117 })).toBe(
+      '{"action":"kbd_press","key":91,"interrept":true}',
+    );
+    // 未命中(非数字/未映射)返回空串，由发送层静默跳过。
+    expect(buildStreamerWindowsKeyboardInputMessage({ action: "keyboardPress", value: "A" })).toBe("");
   });
 
   it("builds recovered MuMu touch input messages with stable control slots", () => {

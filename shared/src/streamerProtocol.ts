@@ -1568,6 +1568,31 @@ export const STREAMER_ANDROID_TO_MAC_KEY_CODES: Readonly<Record<number, number>>
   160: 76,
 } as const;
 
+// 安卓 keycode -> Windows 虚拟键码(VK_*，十进制，与线上报文 key 字段一致）。
+// 与 Mac 同理:Web 端先把按键算成安卓 keycode，再按被控端平台翻成其原生键码。
+// 来源:官方安卓主控端 libinputmanager.so 的 AndroidLabelKeycodeConverter→WindowsLabelKeycodeConverter
+// (经规范 label 桥接)dump，并经真机抓包校验(实测 key:162=Ctrl、91=Win、8=Backspace、65=A 等)。
+export const STREAMER_ANDROID_TO_WINDOWS_KEY_CODES: Readonly<Record<number, number>> = {
+  // 数字 0-9 -> VK 0x30-0x39
+  7: 48, 8: 49, 9: 50, 10: 51, 11: 52, 12: 53, 13: 54, 14: 55, 15: 56, 16: 57,
+  // 方向键 -> VK_LEFT/UP/RIGHT/DOWN
+  19: 38, 20: 40, 21: 37, 22: 39,
+  // 字母 A-Z -> VK 0x41-0x5A
+  29: 65, 30: 66, 31: 67, 32: 68, 33: 69, 34: 70, 35: 71, 36: 72, 37: 73, 38: 74,
+  39: 75, 40: 76, 41: 77, 42: 78, 43: 79, 44: 80, 45: 81, 46: 82, 47: 83, 48: 84,
+  49: 85, 50: 86, 51: 87, 52: 88, 53: 89, 54: 90,
+  // 标点(US 布局 VK_OEM_*)
+  55: 188, 56: 190, 68: 192, 69: 189, 70: 187, 71: 219, 72: 221, 73: 220, 74: 186, 75: 222, 76: 191,
+  // 修饰键(左右专属 VK):Alt L/R、Shift L/R、Ctrl L/R、Win L/R
+  57: 164, 58: 165, 59: 160, 60: 161, 113: 162, 114: 163, 117: 91, 118: 92,
+  // 编辑/导航:Tab、Space、Enter、Backspace、PageUp/Down、Esc、Delete、Home、End、Insert
+  61: 9, 62: 32, 66: 13, 67: 8, 92: 33, 93: 34, 111: 27, 112: 46, 122: 36, 123: 35, 124: 45,
+  // 功能键 F1-F12 -> VK 0x70-0x7B
+  131: 112, 132: 113, 133: 114, 134: 115, 135: 116, 136: 117, 137: 118, 138: 119, 139: 120, 140: 121, 141: 122, 142: 123,
+  // 小键盘 0-9 -> VK_NUMPAD0-9 (0x60-0x69)
+  144: 96, 145: 97, 146: 98, 147: 99, 148: 100, 149: 101, 150: 102, 151: 103, 152: 104, 153: 105,
+} as const;
+
 export interface StreamerTouchSurface {
   displayId: number;
   width: number;
@@ -1659,6 +1684,18 @@ export function buildStreamerMacKeyboardInputMessage(input: BuildStreamerKeyboar
 export function transformStreamerAndroidKeyCodeToMac(value: string | number): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   return STREAMER_ANDROID_TO_MAC_KEY_CODES[Math.trunc(value)];
+}
+
+export function buildStreamerWindowsKeyboardInputMessage(input: BuildStreamerKeyboardInputMessageInput): string {
+  const key = transformStreamerAndroidKeyCodeToWindows(input.value);
+  if (key === undefined) return "";
+  // 官方安卓主控端发往 Windows 的 kbd 报文带有 interrept 字段(真机抓包确认，拼写以被控端为准，原样复刻）。
+  return JSON.stringify({ action: STREAMER_DESKTOP_INPUT_EVENT_TYPES[input.action], key, interrept: true });
+}
+
+export function transformStreamerAndroidKeyCodeToWindows(value: string | number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return STREAMER_ANDROID_TO_WINDOWS_KEY_CODES[Math.trunc(value)];
 }
 
 function normalizeAbsolutePointerAxis(value: number, size: number): number {
