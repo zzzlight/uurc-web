@@ -38,7 +38,6 @@ export interface RemoteControlPageProps {
   canReadLocalClipboard: boolean;
   canReconnectRemote: boolean;
   canSendClipboardText: boolean;
-  canSendRemoteText: boolean;
   candidatePairSummary: string;
   clipboardPreviewLabel: string;
   clipboardStatusLabel: string;
@@ -68,7 +67,6 @@ export interface RemoteControlPageProps {
   remoteStageFrameRef: RefObject<HTMLDivElement | null>;
   isFullscreen: boolean;
   remoteStageViewMode: RemoteStageViewMode;
-  remoteTextInput: string;
   remoteVideoCount: number;
   remoteVideoStreams: RemoteVideoStream[];
   roomDebugPayload: unknown;
@@ -117,19 +115,16 @@ export interface RemoteControlPageProps {
   onRemoteStagePointerUp: (event: PointerEvent<HTMLDivElement>) => void;
   onRemoteStageWheel: (event: WheelEvent<HTMLDivElement>) => void;
   onRemoteShortcut: (shortcut: RemoteShortcut) => void;
-  onRemoteTextInputChange: (value: string) => void;
   onRemoteVideoSourceChange: (videoId: string) => void;
   onRemoteVideoSample: (videoId: string, sample: BrowserRemoteVideoElementSample) => void;
   onReadLocalClipboard: () => void;
   onReturnToDevices: () => void;
   onSdpTransportModeChange: (mode: SdpTransportMode) => void;
-  onSendRemoteText: () => void;
   onSignalServerIndexChange: (index: number) => void;
   onStartBrowserRemote: () => void;
   onStartSignalGateway: () => void;
   onStageViewModeChange: (mode: RemoteStageViewMode) => void;
   onStopSignalGateway: () => void;
-  onSyncSignalEvents: () => void;
   onSendClipboardText: () => void;
   onToggleInputControl: () => void;
   onToggleFullscreen: () => void;

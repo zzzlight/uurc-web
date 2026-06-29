@@ -8,7 +8,6 @@ import {
   RotateCcw,
   Scan,
   ShieldCheck,
-  TerminalSquare,
 } from "lucide-react";
 
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
@@ -16,10 +15,8 @@ import { RemoteShortcutMenu } from "./RemoteShortcutMenu.js";
 import { useDraggableFloatingPanel } from "./useDraggableFloatingPanel.js";
 
 export function RemoteCommandBar({
-  browserRemoteState,
   busy,
   canReconnectRemote,
-  canSendRemoteText,
   controlChannelState,
   inputControlActive,
   isFullscreen,
@@ -27,21 +24,15 @@ export function RemoteCommandBar({
   onNextAction,
   onReconnectRemote,
   onRemoteShortcut,
-  onRemoteTextInputChange,
-  onSendRemoteText,
   onStageViewModeChange,
   onToggleInputControl,
   onToggleFullscreen,
   remoteRecoveryLabel,
   remoteStageViewMode,
-  remoteTextInput,
-  textChannelState,
 }: Pick<
   RemoteControlPageProps,
-  | "browserRemoteState"
   | "busy"
   | "canReconnectRemote"
-  | "canSendRemoteText"
   | "controlChannelState"
   | "inputControlActive"
   | "isFullscreen"
@@ -49,15 +40,11 @@ export function RemoteCommandBar({
   | "onNextAction"
   | "onReconnectRemote"
   | "onRemoteShortcut"
-  | "onRemoteTextInputChange"
-  | "onSendRemoteText"
   | "onStageViewModeChange"
   | "onToggleInputControl"
   | "onToggleFullscreen"
   | "remoteRecoveryLabel"
   | "remoteStageViewMode"
-  | "remoteTextInput"
-  | "textChannelState"
 >) {
   const nextStageMode = remoteStageViewMode === "fit" ? "fill" : "fit";
   const { dragHandleProps, panelRef, panelStyle } = useDraggableFloatingPanel<HTMLElement>();
@@ -103,22 +90,6 @@ export function RemoteCommandBar({
         </button>
         <RemoteShortcutMenu disabled={!inputControlActive} onRemoteShortcut={onRemoteShortcut} />
       </div>
-      {browserRemoteState.stage === "connected" || textChannelState === "open" ? (
-        <div className="remote-input-row compact">
-          <input
-            id="remote-text-input"
-            name="remoteTextInput"
-            aria-label="远控文本输入"
-            value={remoteTextInput}
-            onChange={(event) => onRemoteTextInputChange(event.target.value)}
-            placeholder="发送文本到被控端"
-          />
-          <button onClick={onSendRemoteText} disabled={!canSendRemoteText}>
-            <TerminalSquare size={17} />
-            发送文本
-          </button>
-        </div>
-      ) : null}
     </section>
   );
 }

@@ -782,9 +782,13 @@ describe("App console", () => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
     await openAdvancedSettings(user);
-    await user.click(screen.getByRole("button", { name: "手动同步诊断" }));
 
-    await screen.findByText("ack=fail · code=100002 · protocol=protocol_error_2022 · msg=rejected");
+    // 信令事件由后台自动轮询同步（已无手动同步入口），等待轮询应用 control:ack 失败事件。
+    await screen.findByText(
+      "ack=fail · code=100002 · protocol=protocol_error_2022 · msg=rejected",
+      undefined,
+      { timeout: 3000 },
+    );
     expect(screen.getAllByText("连接确认失败").length).toBeGreaterThan(0);
   });
 
@@ -844,14 +848,9 @@ describe("App console", () => {
     await user.keyboard("a");
     expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(0);
 
-    // 输入文本后可发送（已处于操作中、文本通道已打开）。
-    await user.type(screen.getByLabelText("远控文本输入"), "hello");
-    expect(screen.getByRole("button", { name: "发送文本" })).toBeEnabled();
-
-    // 暂停操作后，文本发送被禁用。
+    // 暂停操作后回到“开始操作远端”。
     await user.click(screen.getByRole("button", { name: "暂停操作" }));
     expect(screen.getByRole("button", { name: "开始操作远端" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发送文本" })).toBeDisabled();
   });
 
   it("surfaces one-click reconnect after the control channel drops and reuses the current room", async () => {
@@ -993,10 +992,10 @@ describe("App console", () => {
       expectSignalState("已连接");
     });
     await openAdvancedSettings(user);
-    await user.click(screen.getByRole("button", { name: "手动同步诊断" }));
 
+    // 连接质量由后台自动轮询刷新 WebRTC 统计，等待轮询消费至少两帧统计后算出码率/帧率。
     const quality = screen.getByRole("region", { name: "连接质量" });
-    await within(quality).findByText("帧率");
+    await within(quality).findByText("帧率", undefined, { timeout: 3000 });
     expect(within(quality).getByText("30 fps")).toBeInTheDocument();
     expect(within(quality).getByText("接收码率")).toBeInTheDocument();
     expect(within(quality).getByText("4.8 Mbps")).toBeInTheDocument();

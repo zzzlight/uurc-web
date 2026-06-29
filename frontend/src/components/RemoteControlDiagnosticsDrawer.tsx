@@ -1,5 +1,3 @@
-import { LoaderCircle, TerminalSquare } from "lucide-react";
-
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 import { DebugEventList } from "./DebugEventList.js";
 import { formatAppFlagControlMode, getDeviceConnectionLabel } from "../devices/deviceLabels.js";
@@ -12,7 +10,6 @@ export function RemoteControlDiagnosticsDrawer({
   browserRemoteState,
   browserRtcDescription,
   browserStageLabel,
-  busy,
   candidatePairSummary,
   connectionPathLabel,
   controlChannelLabel,
@@ -23,7 +20,6 @@ export function RemoteControlDiagnosticsDrawer({
   inputControlActive,
   joinModeLabel,
   networkSwitchSummary,
-  onSyncSignalEvents,
   remoteBootstrap,
   roomDebugPayload,
   roomJoinModeDebugLabel,
@@ -49,7 +45,6 @@ export function RemoteControlDiagnosticsDrawer({
   | "browserRemoteState"
   | "browserRtcDescription"
   | "browserStageLabel"
-  | "busy"
   | "candidatePairSummary"
   | "connectionPathLabel"
   | "controlChannelLabel"
@@ -60,7 +55,6 @@ export function RemoteControlDiagnosticsDrawer({
   | "inputControlActive"
   | "joinModeLabel"
   | "networkSwitchSummary"
-  | "onSyncSignalEvents"
   | "remoteBootstrap"
   | "roomDebugPayload"
   | "roomJoinModeDebugLabel"
@@ -83,12 +77,6 @@ export function RemoteControlDiagnosticsDrawer({
   return (
     <details className="control-drawer">
       <summary>调试信息</summary>
-      <div className="transport-actions">
-        <button onClick={onSyncSignalEvents} disabled={busy !== null}>
-          {busy === "signal-events" ? <LoaderCircle className="spin" size={17} /> : <TerminalSquare size={17} />}
-          手动同步诊断
-        </button>
-      </div>
       <div className="status-list compact">
         <StatusRow label="目标设备" value={selectedDevice?.alias ?? "-"} />
         <StatusRow label="目标 ID" value={selectedDeviceId || "-"} />

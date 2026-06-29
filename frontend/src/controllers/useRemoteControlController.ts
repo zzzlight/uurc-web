@@ -142,7 +142,6 @@ export function useRemoteControlController() {
   const [remoteVideoStreams, setRemoteVideoStreams] = useState<RemoteVideoStream[]>([]);
   const [remoteVideoSamplesById, setRemoteVideoSamplesById] = useState<RemoteVideoSamplesById>({});
   const [selectedRemoteVideoId, setSelectedRemoteVideoId] = useState("");
-  const [remoteTextInput, setRemoteTextInput] = useState("");
   const [clipboardText, setClipboardText] = useState("");
   const [clipboardStatus, setClipboardStatus] = useState("尚未读取本机剪贴板");
   const [autoReconnectEnabled, setAutoReconnectEnabled] = useState(true);
@@ -643,12 +642,6 @@ export function useRemoteControlController() {
     });
   }
 
-  async function handleSyncSignalEvents() {
-    await run("signal-events", async () => {
-      await applyLatestSignalEvents();
-    });
-  }
-
   async function applyLatestSignalEvents(session = browserRemoteSession.current) {
     const events = await getRemoteSignalEvents();
     const diagnostics = await getRemoteSignalDiagnostics();
@@ -700,7 +693,6 @@ export function useRemoteControlController() {
       remoteStageRef.current?.focus();
       return;
     }
-    await handleSyncSignalEvents();
   }
 
   function handleRemoteMediaStream(stream: MediaStream) {
@@ -719,17 +711,6 @@ export function useRemoteControlController() {
     const nextState = browserRemoteSession.current?.recordVideoElementSample(sample);
     if (nextState) setBrowserRemoteState(nextState);
   }, []);
-
-  function handleSendRemoteText() {
-    try {
-      browserRemoteSession.current?.sendTextData(remoteTextInput);
-      setRemoteTextInput("");
-      showToast("已发送文本到远端");
-      if (browserRemoteSession.current) setBrowserRemoteState(browserRemoteSession.current.getState());
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
-  }
 
   function handleRemoteClipboard(text: string) {
     // 反向剪贴板同步：被控端剪贴板变化时回传文本，写入本机剪贴板（失败则保留在面板供手动处理）。
@@ -1004,7 +985,6 @@ export function useRemoteControlController() {
     : controlChannelState === "open"
       ? "已暂停"
       : controlChannelLabel;
-  const canSendRemoteText = inputControlActive && textChannelState === "open" && remoteTextInput.trim().length > 0;
   const decodeStalledPersisted =
     browserRemoteState.videoFlow?.status === "decode_stalled" && decodeStalledStreak >= 2;
   const browserConnectionRecoverable =
@@ -1284,7 +1264,6 @@ export function useRemoteControlController() {
     canReadLocalClipboard,
     canReconnectRemote: browserConnectionRecoverable,
     canSendClipboardText,
-    canSendRemoteText,
     candidatePairSummary,
     clipboardPreviewLabel,
     clipboardStatusLabel: clipboardStatus,
@@ -1313,7 +1292,6 @@ export function useRemoteControlController() {
     remoteStageFrameRef,
     isFullscreen,
     remoteStageViewMode,
-    remoteTextInput,
     remoteVideoCount,
     remoteVideoStreams,
     roomDebugPayload,
@@ -1362,19 +1340,16 @@ export function useRemoteControlController() {
     onRemoteStagePointerUp: handleRemoteStagePointerUp,
     onRemoteStageWheel: handleRemoteStageWheel,
     onRemoteShortcut: handleRemoteShortcut,
-    onRemoteTextInputChange: setRemoteTextInput,
     onRemoteVideoSourceChange: setSelectedRemoteVideoId,
     onRemoteVideoSample: handleRemoteVideoSample,
     onReadLocalClipboard: () => void handleReadLocalClipboard(),
     onReturnToDevices: () => void handleReturnToDevices(),
     onSdpTransportModeChange: setSdpTransportMode,
-    onSendRemoteText: handleSendRemoteText,
     onSignalServerIndexChange: setSignalServerIndex,
     onStartBrowserRemote: () => void handleStartBrowserRemote(),
     onStartSignalGateway: () => void handleStartSignalGateway(),
     onStageViewModeChange: setRemoteStageViewMode,
     onStopSignalGateway: () => void handleStopSignalGateway(),
-    onSyncSignalEvents: () => void handleSyncSignalEvents(),
     onSendClipboardText: handleSendClipboardText,
     onToggleInputControl: handleToggleInputControl,
     onToggleFullscreen: handleToggleFullscreen,

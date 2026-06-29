@@ -166,9 +166,9 @@ export function getNextAction(input: {
     };
   }
   return {
-    label: "同步状态",
-    detail: "连接已建立，刷新链路诊断",
-    disabled: input.busy !== null,
+    label: "远控进行中",
+    detail: "",
+    disabled: true,
   };
 }
 
