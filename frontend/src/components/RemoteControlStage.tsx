@@ -5,6 +5,7 @@ import { RemoteVideoTile } from "./RemoteVideoTile.js";
 
 export function RemoteControlStage({
   browserRemoteState,
+  browserStageLabel,
   hasRemoteVideo,
   inputControlActive,
   inputControlLabel,
@@ -28,6 +29,7 @@ export function RemoteControlStage({
 }: Pick<
   RemoteControlPageProps,
   | "browserRemoteState"
+  | "browserStageLabel"
   | "hasRemoteVideo"
   | "inputControlActive"
   | "inputControlLabel"
@@ -79,7 +81,7 @@ export function RemoteControlStage({
             ))}
           </div>
           <div className="stage-badge">
-            {browserRemoteState.stage} · {remoteVideoCount} 路视频 · {videoFlowLabel} · 输入{inputControlLabel}
+            {browserStageLabel} · {remoteVideoCount} 路视频 · {videoFlowLabel} · 输入 {inputControlLabel}
           </div>
         </>
       ) : (

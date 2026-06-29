@@ -8,6 +8,7 @@ import {
 } from "@uurc/shared/uuProxy";
 
 const API_BASE = "https://api.nrd.nie.163.com";
+const UU_PROXY_TIMEOUT_MS = 30_000;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -46,11 +47,19 @@ async function handleUuProxy(request: Request): Promise<Response> {
       return json({ error: "method and path are required" }, { status: 400 });
     }
     assertAllowedUuApiPath(path);
-    const response = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers: sanitizeUuProxyHeaders(body.headers),
-      body: body.body === undefined ? undefined : JSON.stringify(body.body),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), UU_PROXY_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers: sanitizeUuProxyHeaders(body.headers),
+        body: body.body === undefined ? undefined : JSON.stringify(body.body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     const responseText = await response.text();
     const contentType = response.headers.get("content-type") ?? "";
     return json({

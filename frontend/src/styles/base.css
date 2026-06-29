@@ -230,6 +230,18 @@ h3 {
   animation: spin 0.9s linear infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: spin-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes spin-pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

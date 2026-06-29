@@ -36,7 +36,12 @@ export function RemoteControlTopbar({
           {browserRemoteState.stage === "connected" ? "控制中" : signalGatewayDisplay}
         </StatusPill>
         {canDisconnectRemote ? (
-          <button className="danger-button" onClick={onStopSignalGateway} disabled={busy !== null}>
+          <button
+            className="danger-button"
+            onClick={onStopSignalGateway}
+            disabled={busy !== null}
+            title="断开当前远控连接并释放 UU 房间占用"
+          >
             {busy === "signal-stop" ? <LoaderCircle className="spin" size={17} /> : <CircleStop size={17} />}
             断开连接
           </button>

@@ -15,14 +15,14 @@ export function RemoteControlPage(props: RemoteControlPageProps) {
       <RemoteControlTopbar {...props} />
 
       {props.error ? (
-        <section className="error-strip">
+        <section className="error-strip" role="alert" aria-live="assertive">
           <TerminalSquare size={18} />
           <span>{props.error}</span>
         </section>
       ) : null}
 
       <section className="control-stage-layout">
-        <div className="control-stage-frame">
+        <div className="control-stage-frame" ref={props.remoteStageFrameRef}>
           <RemoteCommandBar {...props} />
           <RemoteControlStage {...props} />
         </div>

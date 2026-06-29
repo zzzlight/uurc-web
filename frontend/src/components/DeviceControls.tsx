@@ -7,6 +7,7 @@ import { getDeviceConnectionLabel, getDeviceControlLabel } from "../devices/devi
 export function DeviceSection({
   title,
   devices,
+  loading,
   selected,
   currentDeviceId,
   onSelect,
@@ -14,6 +15,7 @@ export function DeviceSection({
 }: {
   title: string;
   devices: UuDevice[];
+  loading?: boolean;
   selected: string;
   currentDeviceId?: string;
   onSelect: (deviceId: string) => void;
@@ -68,7 +70,7 @@ export function DeviceSection({
           })}
         </div>
       ) : (
-        <p className="empty-text">尚未加载设备。</p>
+        <p className="empty-text">{loading ? "正在加载设备…" : "该类别暂无设备"}</p>
       )}
     </section>
   );

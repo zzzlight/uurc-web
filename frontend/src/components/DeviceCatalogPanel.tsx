@@ -10,6 +10,7 @@ export function DeviceCatalogPanel({
   authStatus,
   busy,
   devices,
+  devicesLoaded,
   selectedDeviceId,
   assistanceConnectId,
   assistanceConnectCode,
@@ -26,6 +27,7 @@ export function DeviceCatalogPanel({
   authStatus: AuthStatus | null;
   busy: string | null;
   devices: UuDeviceGroups;
+  devicesLoaded: boolean;
   selectedDeviceId: string;
   assistanceConnectId: string;
   assistanceConnectCode: string;
@@ -39,6 +41,7 @@ export function DeviceCatalogPanel({
   onAssistanceTargetPlatformChange: (value: number) => void;
   onStartRemoteAssistance: () => void;
 }) {
+  const devicesLoading = busy === "devices" || !devicesLoaded;
   return (
     <Panel
       className="devices-panel device-list-panel"
@@ -51,9 +54,9 @@ export function DeviceCatalogPanel({
         </button>
       }
     >
-      <DeviceSection title="桌面端" devices={devices.desktopDevices} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
-      <DeviceSection title="移动端" devices={devices.mobileDevices} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
-      <DeviceSection title="TV" devices={devices.tvDevices} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
+      <DeviceSection title="桌面端" devices={devices.desktopDevices} loading={devicesLoading} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
+      <DeviceSection title="移动端" devices={devices.mobileDevices} loading={devicesLoading} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
+      <DeviceSection title="TV" devices={devices.tvDevices} loading={devicesLoading} selected={selectedDeviceId} currentDeviceId={authStatus?.deviceId} onSelect={onSelectDevice} onConnect={onOpenDevice} />
       <RemoteAssistanceCard
         busy={busy}
         connectCode={assistanceConnectCode}

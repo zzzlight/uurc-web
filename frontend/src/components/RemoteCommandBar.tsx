@@ -22,6 +22,7 @@ export function RemoteCommandBar({
   canSendRemoteText,
   controlChannelState,
   inputControlActive,
+  isFullscreen,
   nextAction,
   onNextAction,
   onReconnectRemote,
@@ -43,6 +44,7 @@ export function RemoteCommandBar({
   | "canSendRemoteText"
   | "controlChannelState"
   | "inputControlActive"
+  | "isFullscreen"
   | "nextAction"
   | "onNextAction"
   | "onReconnectRemote"
@@ -85,6 +87,11 @@ export function RemoteCommandBar({
           {inputControlActive ? "锁定输入控制" : "启用输入控制"}
         </button>
       </div>
+      {nextAction.detail ? (
+        <p className="operation-note" style={{ margin: "4px 2px 0", fontSize: "12px", opacity: 0.72 }}>
+          {nextAction.detail}
+        </p>
+      ) : null}
       <div className="command-action-group command-action-tools" aria-label="远控工具栏">
         <button onClick={() => onStageViewModeChange(nextStageMode)}>
           <Scan size={17} />
@@ -92,7 +99,7 @@ export function RemoteCommandBar({
         </button>
         <button onClick={onToggleFullscreen}>
           <Maximize2 size={17} />
-          全屏
+          {isFullscreen ? "退出全屏" : "全屏"}
         </button>
         <RemoteShortcutMenu disabled={!inputControlActive} onRemoteShortcut={onRemoteShortcut} />
       </div>

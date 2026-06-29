@@ -9,6 +9,7 @@ export function LoginForm({
   mobile,
   regionCode,
   smsCode,
+  smsCountdown,
   onMobileChange,
   onMobileLogin,
   onRegionCodeChange,
@@ -23,6 +24,7 @@ export function LoginForm({
   mobile: string;
   regionCode: string;
   smsCode: string;
+  smsCountdown: number;
   onMobileChange: (value: string) => void;
   onMobileLogin: () => void;
   onRegionCodeChange: (value: string) => void;
@@ -30,7 +32,18 @@ export function LoginForm({
   onSmsCodeChange: (value: string) => void;
 }) {
   return (
-    <section className="form-section auth-card" aria-label="用手机号登录">
+    <form
+      className="form-section auth-card"
+      aria-label="用手机号登录"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (codeRequested) {
+          if (canLogin) onMobileLogin();
+        } else if (canSubmitMobile) {
+          onSendMobileCode();
+        }
+      }}
+    >
       <h2>登录</h2>
       <div className="inline-fields">
         <label htmlFor="region-code">
@@ -74,22 +87,22 @@ export function LoginForm({
       ) : null}
       {codeRequested ? (
         <div className="login-button-row">
-          <button className="primary-action-button" onClick={onMobileLogin} disabled={!canLogin}>
+          <button className="primary-action-button" type="submit" disabled={!canLogin}>
             {busy === "mobile-login" ? <LoaderCircle className="spin" size={17} /> : <LogIn size={17} />}
             登录
           </button>
-          <button onClick={onSendMobileCode} disabled={!canSubmitMobile}>
+          <button type="button" onClick={onSendMobileCode} disabled={!canSubmitMobile}>
             {busy === "send-mobile-code" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}
-            重新获取
+            {smsCountdown > 0 ? `重新获取 (${smsCountdown}s)` : "重新获取"}
           </button>
         </div>
       ) : (
-        <button className="primary-action-button" onClick={onSendMobileCode} disabled={!canSubmitMobile}>
+        <button className="primary-action-button" type="submit" disabled={!canSubmitMobile}>
           {busy === "send-mobile-code" ? <LoaderCircle className="spin" size={17} /> : <Send size={17} />}
           获取验证码
         </button>
       )}
       {loginNotice ? <p className="operation-note">{loginNotice}</p> : null}
-    </section>
+    </form>
   );
 }

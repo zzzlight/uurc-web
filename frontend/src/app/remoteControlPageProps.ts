@@ -64,6 +64,8 @@ export interface RemoteControlPageProps {
   remoteBootstrap: RemoteControlBootstrap | null;
   remoteRecoveryLabel: string;
   remoteStageRef: RefObject<HTMLDivElement | null>;
+  remoteStageFrameRef: RefObject<HTMLDivElement | null>;
+  isFullscreen: boolean;
   remoteStageViewMode: RemoteStageViewMode;
   remoteTextInput: string;
   remoteVideoCount: number;

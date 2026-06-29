@@ -3,7 +3,7 @@ import type { UuDevice, UuDeviceGroups, UuParticipantInfo } from "@uurc/shared";
 type UnknownRecord = Record<string, unknown>;
 
 export function flattenDeviceGroups(input: unknown): UuDeviceGroups {
-  const root = asRecord(input);
+  const root = asRecord(input) ?? {};
   const body = asRecord(root.body) ?? root;
   const data = asRecord(body.data) ?? body;
 

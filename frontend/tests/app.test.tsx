@@ -126,7 +126,7 @@ describe("App console", () => {
     expect(screen.queryByText(/ADB/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "创建网页设备" })).not.toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("区号"), "86");
+    expect(screen.getByLabelText("区号")).toHaveValue("86");
     await user.type(screen.getByLabelText("手机号"), "13800000000");
     await user.click(screen.getByRole("button", { name: "获取验证码" }));
     await screen.findByText("验证码已发送");
@@ -1122,7 +1122,10 @@ describe("App console", () => {
     await user.click(screen.getByRole("button", { name: "启用输入控制" }));
 
     const stage = screen.getByRole("application", { name: "远控画面" }) as HTMLDivElement;
-    stage.requestFullscreen = requestFullscreen;
+    // 全屏改为对包含命令栏的容器（.control-stage-frame，即 stage 的父元素）请求，
+    // 以避免全屏后命令栏（解锁输入/退出全屏等）一并消失。
+    const stageFrame = stage.parentElement as HTMLDivElement;
+    stageFrame.requestFullscreen = requestFullscreen;
     const toolbar = screen.getByLabelText("远控主流程");
     const dragHandle = screen.getByRole("button", { name: "拖动工具栏" });
     expect(dragHandle).toBeInTheDocument();

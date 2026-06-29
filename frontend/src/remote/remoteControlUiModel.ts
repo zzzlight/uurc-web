@@ -14,6 +14,7 @@ import type {
   NextAction,
   RemoteConnectionQuality,
   RemoteConnectionQualityMetric,
+  RoomJoinContext,
   RemoteVideoSamplesById,
   RemoteVideoStream,
 } from "../app/remoteControlTypes.js";
@@ -341,7 +342,10 @@ export type RemotePointerLike = {
 
 export function toRemoteMousePosition(event: RemotePointerLike): { absX: number; absY: number; surfaceWidth: number; surfaceHeight: number } {
   const stageRect = event.currentTarget.getBoundingClientRect();
-  const video = event.currentTarget.querySelector("video");
+  // 多路视频时优先取当前显示(primary)的画面元素；否则会按非显示画面的分辨率换算，导致鼠标坐标偏移。
+  const video =
+    event.currentTarget.querySelector<HTMLVideoElement>('video[data-active="true"]') ??
+    event.currentTarget.querySelector("video");
   const videoWidth = video?.videoWidth || Math.round(stageRect.width);
   const videoHeight = video?.videoHeight || Math.round(stageRect.height);
   const rendered = getContainedMediaRect(stageRect, videoWidth, videoHeight);
@@ -396,7 +400,7 @@ export function formatRoomReleaseState(
   status: RemoteSignalGatewayStatus | null,
   activeRemoteSession: boolean,
   selectedDeviceOccupied: boolean,
-  context?: RemoteControlBootstrap["joinContext"] | null,
+  context?: RoomJoinContext | RemoteControlBootstrap["joinContext"] | null,
 ): string {
   if (status?.roomClear) {
     const code = status.roomClear.body.code;
@@ -411,7 +415,7 @@ export function formatRoomReleaseState(
 
 export function formatRoomReleaseDetail(
   status: RemoteSignalGatewayStatus | null,
-  context?: RemoteControlBootstrap["joinContext"] | null,
+  context?: RoomJoinContext | RemoteControlBootstrap["joinContext"] | null,
 ): string {
   if (status?.roomClearError) return status.roomClearError;
   if (status?.roomClear) {
@@ -679,9 +683,9 @@ export function formatBrowserRemoteStage(stage: BrowserRemoteSessionState["stage
     case "idle":
       return "未启动";
     case "controlled":
-      return "control 已授权";
+      return "已授权";
     case "offered":
-      return "offer 已发出";
+      return "协商中";
     case "connected":
       return "已连接";
     default:

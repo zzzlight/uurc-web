@@ -42,7 +42,7 @@ const ENGINE_IO_BINARY_FRAME_PREFIX = 0x04;
 
 type JsonRecord = Record<string, unknown>;
 
-interface SignalSessionEnv {}
+type SignalSessionEnv = Record<string, never>;
 
 interface EngineOpenPacket {
   sid?: string;

@@ -22,7 +22,6 @@ import type {
   RoomAppFlagUpdateResult,
   RoomJoinResult,
   RoomJoinUpstreamSummary,
-  UuRequest,
   UuResponse,
   UuTransport,
 } from "@uurc/shared/types";

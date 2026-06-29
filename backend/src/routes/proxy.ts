@@ -9,6 +9,8 @@ import {
 
 type FetchLike = typeof fetch;
 
+const UU_PROXY_TIMEOUT_MS = 30_000;
+
 export function createProxyRouter(fetcher: FetchLike = fetch): Router {
   const router = Router();
 
@@ -44,11 +46,19 @@ async function forwardUuRequest<TBody = unknown>(
   },
 ): Promise<UuResponse<TBody>> {
   const bodyText = request.body === undefined ? "" : JSON.stringify(request.body);
-  const response = await fetcher(`${API_BASE}${request.path}`, {
-    method: request.method,
-    headers: request.headers,
-    body: bodyText || undefined,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UU_PROXY_TIMEOUT_MS);
+  let response: Awaited<ReturnType<FetchLike>>;
+  try {
+    response = await fetcher(`${API_BASE}${request.path}`, {
+      method: request.method,
+      headers: request.headers,
+      body: bodyText || undefined,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   const contentType = response.headers.get("content-type") ?? "";
   const responseText = await response.text();
 

@@ -10,6 +10,8 @@ export function LoginPage({
   mobile,
   smsCode,
   loginNotice,
+  codeSent,
+  smsCountdown,
   error,
   busy,
   canSubmitMobile,
@@ -27,6 +29,8 @@ export function LoginPage({
   mobile: string;
   smsCode: string;
   loginNotice: string;
+  codeSent: boolean;
+  smsCountdown: number;
   error: string;
   busy: string | null;
   canSubmitMobile: boolean;
@@ -39,7 +43,7 @@ export function LoginPage({
   onMobileLogin: () => void;
   onImport: () => void;
 }) {
-  const codeRequested = Boolean(loginNotice || smsCode.trim());
+  const codeRequested = codeSent || Boolean(smsCode.trim());
 
   return (
     <main className="product-shell auth-product-shell">
@@ -51,7 +55,7 @@ export function LoginPage({
       </header>
 
       {error ? (
-        <section className="error-strip">
+        <section className="error-strip" role="alert" aria-live="assertive">
           <TerminalSquare size={18} />
           <span>{error}</span>
         </section>
@@ -65,6 +69,7 @@ export function LoginPage({
             canSubmitMobile={canSubmitMobile}
             codeRequested={codeRequested}
             loginNotice={loginNotice}
+            smsCountdown={smsCountdown}
             mobile={mobile}
             regionCode={regionCode}
             smsCode={smsCode}

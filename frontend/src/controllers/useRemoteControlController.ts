@@ -96,10 +96,12 @@ const REMOTE_ASSISTANCE_DEFAULT_TARGET_PLATFORM = 1;
 export function useRemoteControlController() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authJson, setAuthJson] = useState("");
-  const [regionCode, setRegionCode] = useState("");
+  const [regionCode, setRegionCode] = useState("86");
   const [mobile, setMobile] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [loginNotice, setLoginNotice] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [smsCountdown, setSmsCountdown] = useState(0);
   const [devices, setDevices] = useState<UuDeviceGroups>({ desktopDevices: [], mobileDevices: [], tvDevices: [] });
   const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [selectedDeviceIdState, setSelectedDeviceId] = useState("");
@@ -130,11 +132,13 @@ export function useRemoteControlController() {
   const [sdpTransportMode, setSdpTransportMode] = useState<SdpTransportMode>("gzip");
   const [connectionRouteMode, setConnectionRouteMode] = useState<ConnectionRouteMode>("auto");
   const [remoteStageViewMode, setRemoteStageViewMode] = useState<RemoteStageViewMode>("fit");
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [signalServerIndex, setSignalServerIndex] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<BusyAction>("status");
   const browserRemoteSession = useRef<BrowserRemoteSession | null>(null);
   const remoteStageRef = useRef<HTMLDivElement | null>(null);
+  const remoteStageFrameRef = useRef<HTMLDivElement | null>(null);
   const activePointerId = useRef<number | null>(null);
   const navigate = useNavigate();
   const controlRouteMatch = useMatch("/devices/:deviceId/control");
@@ -168,6 +172,20 @@ export function useRemoteControlController() {
 
   useEffect(() => {
     void loadStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载时恢复一次登录态
+  }, []);
+
+  const smsCounting = smsCountdown > 0;
+  useEffect(() => {
+    if (!smsCounting) return;
+    const timer = window.setInterval(() => setSmsCountdown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [smsCounting]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
   useEffect(() => {
@@ -195,7 +213,10 @@ export function useRemoteControlController() {
     };
 
     void sync();
-    const timer = window.setInterval(sync, 1500);
+    // 建链阶段（answer/ICE 尚未就绪）加快轮询，更快应用信令、缩短连接耗时；
+    // 连上后回到 1.5s 稳态，避免稳定期不必要的请求与重渲染。
+    const intervalMs = browserRemoteState.stage === "connected" ? 1500 : 600;
+    const timer = window.setInterval(sync, intervalMs);
     return () => {
       stopped = true;
       window.clearInterval(timer);
@@ -209,6 +230,8 @@ export function useRemoteControlController() {
       await task();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
+      // 远程协助失败时清除“等待对方确认…”等瞬态提示，避免与错误条同时显示矛盾信息
+      if (action === "assistance") setAssistanceNotice("");
     } finally {
       setBusy(null);
     }
@@ -227,7 +250,13 @@ export function useRemoteControlController() {
 
   async function handleImport() {
     await run("import", async () => {
-      setAuthStatus(await importAuthState(authJson));
+      const status = await importAuthState(authJson);
+      setAuthStatus(status);
+      if (!status.hasState) {
+        const fieldLabels: Record<string, string> = { token: "令牌", userId: "用户 ID", deviceId: "设备 ID" };
+        const missing = (status.missingFields ?? []).map((field) => fieldLabels[field] ?? field).join("、");
+        throw new Error(missing ? `导入失败：登录态缺少 ${missing}` : "导入失败：登录态不完整");
+      }
       setLoginNotice("已导入");
       setDevicesLoaded(false);
       navigate("/devices", { replace: true });
@@ -242,6 +271,9 @@ export function useRemoteControlController() {
   }
 
   async function handleLogout() {
+    if (typeof window !== "undefined" && !window.confirm("退出后需重新登录。若未导出登录态备份，建议先导出。确定退出？")) {
+      return;
+    }
     await run("logout", async () => {
       resetBrowserRemoteSession();
       setAuthStatus(await clearAuthState());
@@ -262,6 +294,8 @@ export function useRemoteControlController() {
       setSignalEvents([]);
       setRemoteSignalDiagnostics(null);
       setLoginNotice("");
+      setCodeSent(false);
+      setSmsCountdown(0);
       navigate("/login", { replace: true });
     });
   }
@@ -277,6 +311,8 @@ export function useRemoteControlController() {
       await ensureMobileDevice();
       const result = await sendMobileCode({ regionCode: regionCode.trim() || "86", mobile });
       setAuthStatus(result.status);
+      setCodeSent(true);
+      setSmsCountdown(60);
       setLoginNotice("验证码已发送");
     });
   }
@@ -302,10 +338,6 @@ export function useRemoteControlController() {
     });
   }
 
-  async function handleJoinRoom(joinWithForce = forceJoin) {
-    await joinRoomForDevice(selectedDeviceId, joinWithForce);
-  }
-
   async function handleOpenDevice(deviceId: string) {
     setSelectedDeviceId(deviceId);
     navigate(`/devices/${encodeURIComponent(deviceId)}/control`);
@@ -318,6 +350,7 @@ export function useRemoteControlController() {
       return;
     }
 
+    setAssistanceNotice("");
     await run("assistance", async () => {
       const connectId = assistanceConnectId.trim();
       const connectCode = assistanceConnectCode.trim();
@@ -481,7 +514,13 @@ export function useRemoteControlController() {
 
   async function handleReturnToDevices() {
     if (busy !== null) return;
-    if (canDisconnectRemote || roomJoinContext?.deviceId) {
+    const hasActiveSession = canDisconnectRemote || Boolean(roomJoinContext?.deviceId);
+    if (hasActiveSession) {
+      const message =
+        roomJoinContext?.kind === "remote_assistance"
+          ? "返回将断开当前远控并取消本次远程协助，确定返回？"
+          : "返回将断开当前远控并释放 UU 房间占用，确定返回？";
+      if (typeof window !== "undefined" && !window.confirm(message)) return;
       await handleStopSignalGateway();
     }
     navigate("/devices");
@@ -648,13 +687,20 @@ export function useRemoteControlController() {
 
   async function handleReadLocalClipboard() {
     await run("clipboard-read", async () => {
-      const text = await readLocalClipboardText();
-      if (typeof text !== "string") {
-        setClipboardStatus("当前浏览器未返回剪贴板文本");
-        return;
+      try {
+        const text = await readLocalClipboardText();
+        if (typeof text !== "string") {
+          setClipboardStatus("当前浏览器未返回剪贴板文本");
+          return;
+        }
+        setClipboardText(text);
+        setClipboardStatus(text.trim() ? `已读取 ${text.length} 字符` : "剪贴板为空");
+      } catch (caught) {
+        // 就地反馈到剪贴板面板，不打扰全局错误条；权限/非安全上下文是最常见原因。
+        setClipboardStatus(
+          `无法读取本机剪贴板（需在 HTTPS 或 localhost 下访问并授予剪贴板权限）：${caught instanceof Error ? caught.message : String(caught)}`,
+        );
       }
-      setClipboardText(text);
-      setClipboardStatus(text.trim() ? `已读取 ${text.length} 字符` : "剪贴板为空");
     });
   }
 
@@ -681,14 +727,15 @@ export function useRemoteControlController() {
   }
 
   function handleToggleFullscreen() {
-    const stage = remoteStageRef.current;
-    if (!stage) return;
+    // 对包含命令栏的容器请求全屏，避免全屏后命令栏（解锁输入/退出全屏等）一并消失。
+    const target = remoteStageFrameRef.current ?? remoteStageRef.current;
+    if (!target) return;
     try {
       if (document.fullscreenElement) {
         void document.exitFullscreen?.();
         return;
       }
-      void stage.requestFullscreen?.();
+      void target.requestFullscreen?.();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -713,9 +760,11 @@ export function useRemoteControlController() {
       event.currentTarget.setPointerCapture(event.pointerId);
     }
     try {
+      // 输入热路径不主动刷新 React 状态：鼠标/键盘操作不改变任何可见 UI，
+      // 而 getState() 每次返回新引用会强制整页重渲染，挤占主线程并拖慢控制心跳。
+      // 通道开/关等真正的状态变化由 BrowserRemoteSession 内部在变化时单独推送。
       browserRemoteSession.current.sendMouseMove(toRemoteMousePosition(event));
       browserRemoteSession.current.sendMouseButton({ action: "mousePress", button: toRemoteMouseButton(event.button) });
-      setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -727,7 +776,6 @@ export function useRemoteControlController() {
     event.preventDefault();
     try {
       browserRemoteSession.current.sendMouseMove(toRemoteMousePosition(event));
-      setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -744,7 +792,6 @@ export function useRemoteControlController() {
     try {
       browserRemoteSession.current.sendMouseMove(toRemoteMousePosition(event));
       browserRemoteSession.current.sendMouseButton({ action: "mouseRelease", button: toRemoteMouseButton(event.button) });
-      setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -756,7 +803,6 @@ export function useRemoteControlController() {
     if (!inputControlActive || !browserRemoteSession.current) return;
     try {
       browserRemoteSession.current.sendMouseButton({ action: "mouseRelease", button: toRemoteMouseButton(event.button) });
-      setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -767,7 +813,6 @@ export function useRemoteControlController() {
     event.preventDefault();
     try {
       browserRemoteSession.current.sendMouseScroll({ deltaX: event.deltaX, deltaY: event.deltaY });
-      setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -778,7 +823,6 @@ export function useRemoteControlController() {
     event.preventDefault();
     try {
       browserRemoteSession.current.sendKeyboardInput({ action: "keyboardPress", value: toRemoteKeyValue(event) });
-      setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -789,7 +833,6 @@ export function useRemoteControlController() {
     event.preventDefault();
     try {
       browserRemoteSession.current.sendKeyboardInput({ action: "keyboardRelease", value: toRemoteKeyValue(event) });
-      setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -797,7 +840,7 @@ export function useRemoteControlController() {
 
   const loggedIn = Boolean(authStatus?.hasState);
   const deviceTotal = devices.desktopDevices.length + devices.mobileDevices.length + devices.tvDevices.length;
-  const canSubmitMobile = mobile.trim().length > 0 && busy === null;
+  const canSubmitMobile = mobile.trim().length > 0 && busy === null && smsCountdown === 0;
   const canLogin = mobile.trim().length > 0 && smsCode.trim().length > 0 && busy === null;
 
   useAutoLoadDevices({
@@ -910,6 +953,7 @@ export function useRemoteControlController() {
     }, delayMs);
 
     return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleReconnectRemote 每次渲染重建，纳入依赖会导致退避定时器被反复重置
   }, [
     autoReconnectAttemptCount,
     autoReconnectEnabled,
@@ -1000,6 +1044,8 @@ export function useRemoteControlController() {
     mobile,
     smsCode,
     loginNotice,
+    codeSent,
+    smsCountdown,
     error,
     busy,
     canSubmitMobile,
@@ -1017,6 +1063,7 @@ export function useRemoteControlController() {
     authStatus,
     authJson,
     devices,
+    devicesLoaded,
     selectedDeviceId,
     assistanceConnectId,
     assistanceConnectCode,
@@ -1078,6 +1125,8 @@ export function useRemoteControlController() {
     remoteBootstrap,
     remoteRecoveryLabel,
     remoteStageRef,
+    remoteStageFrameRef,
+    isFullscreen,
     remoteStageViewMode,
     remoteTextInput,
     remoteVideoCount,

@@ -9,6 +9,7 @@ export function DeviceListPage({
   authStatus,
   authJson,
   devices,
+  devicesLoaded,
   selectedDeviceId,
   assistanceConnectId,
   assistanceConnectCode,
@@ -31,6 +32,7 @@ export function DeviceListPage({
   authStatus: AuthStatus | null;
   authJson: string;
   devices: UuDeviceGroups;
+  devicesLoaded: boolean;
   selectedDeviceId: string;
   assistanceConnectId: string;
   assistanceConnectCode: string;
@@ -60,7 +62,7 @@ export function DeviceListPage({
       </header>
 
       {error ? (
-        <section className="error-strip">
+        <section className="error-strip" role="alert" aria-live="assertive">
           <TerminalSquare size={18} />
           <span>{error}</span>
         </section>
@@ -70,6 +72,7 @@ export function DeviceListPage({
         <DeviceCatalogPanel
           authStatus={authStatus}
           devices={devices}
+          devicesLoaded={devicesLoaded}
           busy={busy}
           selectedDeviceId={selectedDeviceId}
           assistanceConnectId={assistanceConnectId}

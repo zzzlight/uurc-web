@@ -58,6 +58,7 @@ export function RemoteVideoTile({
         muted
         tabIndex={visible ? undefined : -1}
         data-track-index={index + 1}
+        data-active={visible ? "true" : undefined}
       />
     </div>
   );

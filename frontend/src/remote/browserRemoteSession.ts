@@ -70,7 +70,7 @@ export interface BrowserRemoteDataChannel {
 export interface BrowserRemoteSessionOptions {
   api: BrowserRemoteSessionApi;
   createPeerConnection?: (configuration: RTCConfiguration) => BrowserRemotePeerConnection;
-  getVideoCodecPreferences?: () => RTCRtpCodecCapability[];
+  getVideoCodecPreferences?: () => RTCRtpCodec[];
   now?: () => number;
   onRemoteStream?: (stream: MediaStream) => void;
   onStateChange?: (state: BrowserRemoteSessionState) => void;
@@ -245,7 +245,7 @@ export class BrowserRemoteSession {
   private static readonly dataReceiveDebugIntervalMs = 30000;
 
   private readonly createPeerConnection: (configuration: RTCConfiguration) => BrowserRemotePeerConnection;
-  private readonly getVideoCodecPreferences: () => RTCRtpCodecCapability[];
+  private readonly getVideoCodecPreferences: () => RTCRtpCodec[];
   private readonly now: () => number;
   private peer: BrowserRemotePeerConnection | null = null;
   private readonly dataChannels = new Map<StreamerDataChannelLabel, BrowserRemoteDataChannel>();
@@ -660,8 +660,9 @@ export class BrowserRemoteSession {
     const record = asRecord(payload);
     const data = asRecord(record?.data);
     if (!this.isCurrentSoacPayload(record, data)) return;
+    if (!data) return;
 
-    const type = data?.type;
+    const type = data.type;
     if (type === "answer" || type === "restart_ice") {
       const sdp = typeof data.sdp === "string" ? data.sdp : undefined;
       if (!sdp) return;
@@ -844,9 +845,14 @@ export class BrowserRemoteSession {
       this.recordDebugEvent("data_send", "控制心跳发送失败", {
         label,
         sequence,
+        readyState: channel.readyState,
         error: getErrorMessage(error),
       });
-      this.stopEchoHeartbeat();
+      // 仅在通道确实不可用时停止心跳。瞬时背压（send 抛错但通道仍 open）不应永久杀死心跳，
+      // 否则受控端会因连续收不到心跳而判定主控离线并停止推流，只能断开重连才恢复。
+      if (channel.readyState !== "open") {
+        this.stopEchoHeartbeat();
+      }
       return;
     }
 
@@ -1035,11 +1041,14 @@ export class BrowserRemoteSession {
 
   private updateDataChannelState(label: StreamerDataChannelLabel): void {
     const channel = this.dataChannels.get(label);
+    const nextReadyState = channel?.readyState ?? "closed";
+    // 仅在通道状态真正变化时推送，避免每次发送（鼠标移动/心跳/输入）都触发整页重渲染。
+    if (this.state.dataChannels[label] === nextReadyState) return;
     this.setState({
       ...this.state,
       dataChannels: {
         ...this.state.dataChannels,
-        [label]: channel?.readyState ?? "closed",
+        [label]: nextReadyState,
       },
     });
   }
@@ -1077,7 +1086,11 @@ export class BrowserRemoteSession {
       ...this.state,
       debugEvents: this.debugEvents,
     };
-    this.options.onStateChange?.(this.getState());
+    // 注意：调试事件只追加到环形缓冲，不主动推送 React 状态。
+    // 高频路径（鼠标移动、控制心跳、回复 EchoRequest、收数据、统计采样）会产生大量调试事件，
+    // 若每条都触发 onStateChange 会引发整页重渲染，挤占主线程，进而拖慢/饿死 100ms 控制心跳，
+    // 导致受控端判定主控离线而停止推流（“发起控制后画面卡死”）。
+    // 真正影响 UI 的状态变化都会经由 setState 单独推送；调试列表会在下一次 setState 或 1.5s 轮询时刷新。
   }
 
   private applyRemoteDisplayCapability(event: RemoteSignalGatewayEvent): void {
@@ -1312,7 +1325,7 @@ function extractCandidateType(candidate: unknown): string | undefined {
   return match?.[1];
 }
 
-function dropUndefinedFields<T extends Record<string, unknown>>(record: T): T {
+function dropUndefinedFields<T extends object>(record: T): T {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined)) as T;
 }
 
@@ -1334,7 +1347,7 @@ function normalizeSwitchNetworkNotify(payload: unknown, currentIceId: string | u
     if (!record) continue;
     const iceId = typeof record.ice_id === "string" ? record.ice_id : undefined;
     if (iceId && currentIceId && iceId !== currentIceId) continue;
-    const transportType = typeof record.transport_type === "number" ? record.transport_type : undefined;
+    const transportType = typeof record.transport_type === "number" ? (record.transport_type as StreamerIceNetworkType) : undefined;
     return { iceId, transportType };
   }
   return null;
@@ -1361,7 +1374,7 @@ function createMediaStream(): MediaStream | null {
   return typeof MediaStream === "undefined" ? null : new MediaStream();
 }
 
-function getBrowserH264CodecPreferences(): RTCRtpCodecCapability[] {
+function getBrowserH264CodecPreferences(): RTCRtpCodec[] {
   if (typeof RTCRtpSender === "undefined" || typeof RTCRtpSender.getCapabilities !== "function") return [];
   const codecs = RTCRtpSender.getCapabilities("video")?.codecs ?? [];
   const h264Codecs = codecs.filter((codec) => codec.mimeType.toLowerCase() === "video/h264");
@@ -1370,7 +1383,7 @@ function getBrowserH264CodecPreferences(): RTCRtpCodecCapability[] {
   return [...h264Codecs, ...rtxCodecs];
 }
 
-function applyVideoCodecPreferences(transceiver: RTCRtpTransceiver, codecs: RTCRtpCodecCapability[]): void {
+function applyVideoCodecPreferences(transceiver: RTCRtpTransceiver, codecs: RTCRtpCodec[]): void {
   if (codecs.length === 0 || typeof transceiver.setCodecPreferences !== "function") return;
   try {
     transceiver.setCodecPreferences(codecs);
