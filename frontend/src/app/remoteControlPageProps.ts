@@ -44,6 +44,7 @@ export interface RemoteControlPageProps {
   clipboardStatusLabel: string;
   connectionQuality: RemoteConnectionQuality;
   connectionPathLabel: string;
+  autoConnect: boolean;
   connectionRouteMode: ConnectionRouteMode;
   controlChannelLabel: string;
   controlChannelState: RTCDataChannelState;
@@ -100,6 +101,7 @@ export interface RemoteControlPageProps {
   unexpectedSignalEventSummary: string;
   videoElementLabel: string;
   videoFlowLabel: string;
+  onAutoConnectChange: (enabled: boolean) => void;
   onConnectionRouteModeChange: (mode: ConnectionRouteMode) => void;
   onAutoReconnectEnabledChange: (enabled: boolean) => void;
   onForceJoinChange: (forceJoin: boolean) => void;

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { ChevronDown, Keyboard } from "lucide-react";
 
 import { REMOTE_SHORTCUT_GROUPS, type RemoteShortcut } from "../remote/remoteShortcuts.js";
@@ -8,8 +9,30 @@ interface RemoteShortcutMenuProps {
 }
 
 export function RemoteShortcutMenu({ disabled, onRemoteShortcut }: RemoteShortcutMenuProps) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const details = detailsRef.current;
+    if (!details) return;
+    // 展开后点击菜单外部或按 Esc 自动收起。
+    const onPointerDown = (event: Event) => {
+      if (details.open && event.target instanceof Node && !details.contains(event.target)) {
+        details.open = false;
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && details.open) details.open = false;
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   return (
-    <details className="shortcut-menu">
+    <details className="shortcut-menu" ref={detailsRef}>
       <summary>
         <Keyboard size={17} />
         快捷键

@@ -4,10 +4,12 @@ import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 import { ParticipantList } from "./ParticipantList.js";
 
 export function RemoteControlSettingsDrawer({
+  autoConnect,
   browserRtcReady,
   busy,
   connectionRouteMode,
   forceJoin,
+  onAutoConnectChange,
   onConnectionRouteModeChange,
   onForceJoinChange,
   onSignalServerIndexChange,
@@ -22,10 +24,12 @@ export function RemoteControlSettingsDrawer({
   signalServerOptions,
 }: Pick<
   RemoteControlPageProps,
+  | "autoConnect"
   | "browserRtcReady"
   | "busy"
   | "connectionRouteMode"
   | "forceJoin"
+  | "onAutoConnectChange"
   | "onConnectionRouteModeChange"
   | "onForceJoinChange"
   | "onSignalServerIndexChange"
@@ -42,6 +46,10 @@ export function RemoteControlSettingsDrawer({
   return (
     <details className="control-drawer">
       <summary>控制设置</summary>
+      <label className="control-field auto-connect-field">
+        <span className="control-field-label">进入设备自动连接</span>
+        <input type="checkbox" checked={autoConnect} onChange={(event) => onAutoConnectChange(event.target.checked)} />
+      </label>
       {selectedDevice ? <ParticipantList participants={selectedParticipants} /> : null}
       {selectedDevice ? (
         <div className="control-field">

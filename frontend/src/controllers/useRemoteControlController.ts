@@ -93,6 +93,14 @@ import { useAutoLoadDevices } from "./useAutoLoadDevices.js";
 
 const REMOTE_ASSISTANCE_DEFAULT_TARGET_PLATFORM = 1;
 
+function readAutoConnectPref(): boolean {
+  try {
+    return globalThis.localStorage?.getItem("uurc.autoConnect") !== "false";
+  } catch {
+    return true;
+  }
+}
+
 export function useRemoteControlController() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authJson, setAuthJson] = useState("");
@@ -132,6 +140,7 @@ export function useRemoteControlController() {
   const [inputControlEnabled, setInputControlEnabled] = useState(false);
   const [sdpTransportMode, setSdpTransportMode] = useState<SdpTransportMode>("gzip");
   const [connectionRouteMode, setConnectionRouteMode] = useState<ConnectionRouteMode>("auto");
+  const [autoConnect, setAutoConnect] = useState<boolean>(readAutoConnectPref);
   const [remoteStageViewMode, setRemoteStageViewMode] = useState<RemoteStageViewMode>("fit");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [signalServerIndex, setSignalServerIndex] = useState(0);
@@ -140,6 +149,7 @@ export function useRemoteControlController() {
   const browserRemoteSession = useRef<BrowserRemoteSession | null>(null);
   const remoteStageRef = useRef<HTMLDivElement | null>(null);
   const remoteStageFrameRef = useRef<HTMLDivElement | null>(null);
+  const autoConnectAttemptedDeviceRef = useRef<string>("");
   const activePointerId = useRef<number | null>(null);
   const navigate = useNavigate();
   const controlRouteMatch = useMatch("/devices/:deviceId/control");
@@ -537,7 +547,7 @@ export function useRemoteControlController() {
     setBrowserRemoteState(closedState ?? createIdleBrowserRemoteState());
   }
 
-  async function startBrowserRemoteSession(options: { skipReadinessCheck?: boolean } = {}) {
+  async function startBrowserRemoteSession(options: { skipReadinessCheck?: boolean; forceRelay?: boolean } = {}) {
     if (!authStatus?.deviceId) throw new Error("登录已失效");
     if (!selectedDeviceId) throw new Error("请选择设备");
     if (!options.skipReadinessCheck && !roomReadyForBrowserRtc) throw new Error(browserRtcBlockedReason);
@@ -563,7 +573,7 @@ export function useRemoteControlController() {
         controlConnectType,
       }),
       streamerData: buildStreamerControlStreamerDataJson({ controlId: appControlId }),
-      forceRelay: connectionRouteMode === "relay" ? true : undefined,
+      forceRelay: options.forceRelay ?? (connectionRouteMode === "relay" ? true : undefined),
       gzipSdp: sdpTransportMode === "gzip",
       targetPlatform: roomJoinContext?.kind === "remote_assistance"
         ? roomJoinContext.targetPlatform
@@ -582,6 +592,8 @@ export function useRemoteControlController() {
   async function handleReconnectRemote() {
     await run("reconnect", async () => {
       resetBrowserRemoteSession();
+      // 自动切换方案：默认“自动路径”多次重连仍失败时，升级为强制 UU 中转以提升成功率。
+      const escalateRelay = connectionRouteMode === "auto" && autoReconnectAttemptCount >= 2;
       if (!signalGatewayMatchesRoom) {
         const status = await startRemoteSignalGateway({
           gzipSdp: sdpTransportMode === "gzip",
@@ -595,7 +607,7 @@ export function useRemoteControlController() {
         }
       }
       if (typeof RTCPeerConnection !== "undefined") {
-        await startBrowserRemoteSession({ skipReadinessCheck: true });
+        await startBrowserRemoteSession({ skipReadinessCheck: true, forceRelay: escalateRelay ? true : undefined });
       }
     });
   }
@@ -1099,6 +1111,48 @@ export function useRemoteControlController() {
   }, [controlChannelState, inputControlEnabled]);
 
   useEffect(() => {
+    try {
+      globalThis.localStorage?.setItem("uurc.autoConnect", autoConnect ? "true" : "false");
+    } catch {
+      // 忽略持久化失败（隐私模式等）。
+    }
+  }, [autoConnect]);
+
+  useEffect(() => {
+    if (!controlRouteMatch) {
+      autoConnectAttemptedDeviceRef.current = "";
+      return;
+    }
+    if (
+      !autoConnect ||
+      !loggedIn ||
+      !selectedDeviceId ||
+      selectedDeviceIsCurrentAuthDevice ||
+      selectedDeviceOccupied ||
+      busy !== null ||
+      browserRemoteState.stage !== "idle" ||
+      signalGatewayState === "connected" ||
+      autoConnectAttemptedDeviceRef.current === selectedDeviceId
+    ) {
+      return;
+    }
+    // 进入设备控制页后自动发起一次连接；占用中的设备已被 selectedDeviceOccupied 排除，不会强连。
+    autoConnectAttemptedDeviceRef.current = selectedDeviceId;
+    void handleNextAction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleNextAction 每次渲染重建，不入依赖；用 ref 保证每台设备只自动连一次
+  }, [
+    controlRouteMatch,
+    autoConnect,
+    loggedIn,
+    selectedDeviceId,
+    selectedDeviceIsCurrentAuthDevice,
+    selectedDeviceOccupied,
+    busy,
+    browserRemoteState.stage,
+    signalGatewayState,
+  ]);
+
+  useEffect(() => {
     const releaseHeldInputs = () => browserRemoteSession.current?.releaseAllInputs();
     const onVisibilityChange = () => {
       if (document.hidden) releaseHeldInputs();
@@ -1172,6 +1226,7 @@ export function useRemoteControlController() {
 
   const controlPageProps: RemoteControlPageProps = {
     autoSwitchThresholdLabel,
+    autoConnect,
     autoReconnectEnabled,
     autoReconnectLabel,
     browserIceServers,
@@ -1247,6 +1302,7 @@ export function useRemoteControlController() {
     videoElementLabel,
     videoFlowLabel,
     onAutoReconnectEnabledChange: setAutoReconnectEnabled,
+    onAutoConnectChange: setAutoConnect,
     onConnectionRouteModeChange: setConnectionRouteMode,
     onForceJoinChange: setForceJoin,
     onNextAction: () => void handleNextAction(),

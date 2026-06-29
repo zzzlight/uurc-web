@@ -97,6 +97,8 @@ describe("App console", () => {
     readLocalClipboardTextMock.mockReset();
     readLocalClipboardTextMock.mockResolvedValue("");
     window.localStorage.clear();
+    // 默认关闭“自动连接”，让现有用例显式走手动连接流程；单独的用例会显式打开它。
+    window.localStorage.setItem("uurc.autoConnect", "false");
     window.sessionStorage.clear();
     window.history.replaceState(null, "", "/");
     seedLoginState(authReady);
@@ -166,6 +168,23 @@ describe("App console", () => {
     expect(screen.getByRole("button", { name: "返回设备列表" })).toBeInTheDocument();
     expect(screen.getByText("控制设置")).toBeInTheDocument();
     expect(screen.getByText("调试信息")).toBeInTheDocument();
+  });
+
+  it("auto-connects on entering a device when auto-connect is enabled", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    window.localStorage.setItem("uurc.autoConnect", "true");
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    await user.click(await screen.findByRole("button", { name: /连接 Office Mac/ }));
+    await screen.findByRole("heading", { name: "Office Mac" });
+
+    // 自动发起连接：无需手动点“开始连接”，信令网关 start 请求应自动出现。
+    await waitFor(() => {
+      expect(requestLog.some((call) => call.path === "/api/remote/signal/start")).toBe(true);
+    });
   });
 
   it("starts a partner remote-assistance session by device ID and code", async () => {
