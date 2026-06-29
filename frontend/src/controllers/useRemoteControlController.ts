@@ -101,6 +101,18 @@ function readAutoConnectPref(): boolean {
   }
 }
 
+// 把底层/协议级英文错误映射成用户能看懂、带“怎么办”的中文；未知错误原样返回。
+function toFriendlyError(message: string): string {
+  const text = message || "";
+  if (/ack timed out|timed out|timeout/i.test(text)) return "连接超时，请稍后重试。";
+  if (/signal control ack failed/i.test(text)) return "对端拒绝了本次连接，请稍后重试或更换网络。";
+  if (/did not include a ControlResult/i.test(text)) return "未收到对端的连接许可，请重试。";
+  if (/socket is not connected|is not connected|not open/i.test(text)) return "连接服务未就绪，请重新连接。";
+  if (/Failed to fetch|NetworkError|ERR_NETWORK|network error/i.test(text)) return "网络异常，请检查网络后重试。";
+  if (/Missing required login state/i.test(text)) return "登录态不完整，请重新登录。";
+  return text;
+}
+
 export function useRemoteControlController() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authJson, setAuthJson] = useState("");
@@ -146,6 +158,8 @@ export function useRemoteControlController() {
   const [signalServerIndex, setSignalServerIndex] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<BusyAction>("status");
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
+  const toastIdRef = useRef(0);
   const browserRemoteSession = useRef<BrowserRemoteSession | null>(null);
   const remoteStageRef = useRef<HTMLDivElement | null>(null);
   const remoteStageFrameRef = useRef<HTMLDivElement | null>(null);
@@ -186,6 +200,14 @@ export function useRemoteControlController() {
     void loadStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载时恢复一次登录态
   }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => {
+      setToast((current) => (current && current.id === toast.id ? null : current));
+    }, 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const smsCounting = smsCountdown > 0;
   useEffect(() => {
@@ -241,12 +263,18 @@ export function useRemoteControlController() {
     try {
       await task();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(toFriendlyError(caught instanceof Error ? caught.message : String(caught)));
       // 远程协助失败时清除“等待对方确认…”等瞬态提示，避免与错误条同时显示矛盾信息
       if (action === "assistance") setAssistanceNotice("");
     } finally {
       setBusy(null);
     }
+  }
+
+  function showToast(message: string) {
+    if (!message) return;
+    toastIdRef.current += 1;
+    setToast({ id: toastIdRef.current, message });
   }
 
   async function loadStatus() {
@@ -279,6 +307,7 @@ export function useRemoteControlController() {
     await run("export", async () => {
       const state = await exportAuthState();
       setAuthJson(JSON.stringify(state, null, 2));
+      showToast("已生成登录态备份，请妥善保管");
     });
   }
 
@@ -511,6 +540,7 @@ export function useRemoteControlController() {
       setSignalGatewayStatus(nextStatus);
       setSignalGatewayContext(null);
       setRemoteSignalDiagnostics(null);
+      showToast("已断开远控连接");
       if (nextStatus.roomClear && (nextStatus.roomClear.body.code === undefined || nextStatus.roomClear.body.code === 0)) {
         setRoomJoinContext((current) => current ? { ...current, occupiedAtJoin: false } : current);
       }
@@ -694,6 +724,7 @@ export function useRemoteControlController() {
     try {
       browserRemoteSession.current?.sendTextData(remoteTextInput);
       setRemoteTextInput("");
+      showToast("已发送文本到远端");
       if (browserRemoteSession.current) setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -745,6 +776,7 @@ export function useRemoteControlController() {
     try {
       browserRemoteSession.current.sendTextData(clipboardText);
       setClipboardStatus(`已发送 ${clipboardText.length} 字符到远端`);
+      showToast("已发送剪贴板到远端");
       if (browserRemoteSession.current) setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -1351,6 +1383,8 @@ export function useRemoteControlController() {
   return {
     authLoading: authStatus === null && busy === "status",
     loggedIn,
+    toast,
+    onDismissToast: () => setToast(null),
     loginPageProps,
     deviceListPageProps,
     controlPageProps,
