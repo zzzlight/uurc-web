@@ -1646,6 +1646,43 @@ describe("BrowserRemoteSession", () => {
     expect(session.getState().videoFlow).toEqual(flowAfterActiveSample);
     expect(session.getState().debugEvents).toHaveLength(eventCountAfterActiveSample);
   });
+  it("releases all held mouse buttons and keys via releaseAllInputs", async () => {
+    const api = new FakeRemoteApi();
+    const peer = new FakePeerConnection();
+    const session = new BrowserRemoteSession({
+      api,
+      createPeerConnection: (configuration) => {
+        peer.configuration = configuration;
+        return peer;
+      },
+      now: () => 9000,
+    });
+    await session.start({ appControlId: "control-1", appDataBase64: "Cg==", streamerData: "{}" });
+
+    const control = peer.channels.get(STREAMER_DATA_CHANNEL_LABELS.control);
+    session.sendMouseButton({ action: "mousePress", button: "secondary" });
+    session.sendKeyboardInput({ action: "keyboardPress", value: "A" });
+    control!.sent.length = 0;
+
+    session.releaseAllInputs();
+
+    expect(control?.sent).toEqual([
+      encodeStreamerInputMessage({
+        sequence: 3,
+        timestampMs: 9,
+        inputMessage: buildStreamerMouseButtonInputMessage({ action: "mouseRelease", button: "secondary" }),
+      }),
+      encodeStreamerInputMessage({
+        sequence: 4,
+        timestampMs: 9,
+        inputMessage: buildStreamerKeyboardInputMessage({ action: "keyboardRelease", value: "A" }),
+      }),
+    ]);
+
+    control!.sent.length = 0;
+    session.releaseAllInputs();
+    expect(control?.sent).toEqual([]);
+  });
 });
 
 function soacEvent(id: number, payload: unknown): RemoteSignalGatewayEvent {

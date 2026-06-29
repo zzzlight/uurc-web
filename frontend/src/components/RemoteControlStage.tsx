@@ -11,6 +11,8 @@ export function RemoteControlStage({
   inputControlLabel,
   onRemoteStageKeyDown,
   onRemoteStageKeyUp,
+  onRemoteStageBlur,
+  onRemoteStagePaste,
   onRemoteStagePointerCancel,
   onRemoteStagePointerDown,
   onRemoteStagePointerMove,
@@ -35,6 +37,8 @@ export function RemoteControlStage({
   | "inputControlLabel"
   | "onRemoteStageKeyDown"
   | "onRemoteStageKeyUp"
+  | "onRemoteStageBlur"
+  | "onRemoteStagePaste"
   | "onRemoteStagePointerCancel"
   | "onRemoteStagePointerDown"
   | "onRemoteStagePointerMove"
@@ -63,8 +67,15 @@ export function RemoteControlStage({
       onPointerUp={onRemoteStagePointerUp}
       onPointerCancel={onRemoteStagePointerCancel}
       onWheel={onRemoteStageWheel}
+      onContextMenu={(event) => {
+        // 已解锁输入时，拦截浏览器右键菜单：否则原生菜单会吞掉 pointerup，
+        // 导致“抬起右键”发不出去、被控端右键卡死、之后左键都被当右键。
+        if (inputControlActive) event.preventDefault();
+      }}
       onKeyDown={onRemoteStageKeyDown}
       onKeyUp={onRemoteStageKeyUp}
+      onBlur={onRemoteStageBlur}
+      onPaste={onRemoteStagePaste}
     >
       {hasRemoteVideo ? (
         <>

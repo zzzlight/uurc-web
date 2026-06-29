@@ -266,6 +266,8 @@ export class BrowserRemoteSession {
   private remoteDisplayId: number | undefined;
   private remoteInputDisplayId: number | undefined;
   private sequence = 1;
+  private readonly heldKeyboardValues = new Set<string | number>();
+  private readonly heldMouseButtons = new Set<StreamerMouseButtonKind | number>();
   private previousStatsSample:
     | {
         inboundVideo?: BrowserRemoteInboundVideoStats;
@@ -342,6 +344,8 @@ export class BrowserRemoteSession {
     this.remoteDisplayId = undefined;
     this.remoteInputDisplayId = undefined;
     this.sequence = 1;
+    this.heldKeyboardValues.clear();
+    this.heldMouseButtons.clear();
     this.previousStatsSample = undefined;
     this.previousVideoElementSample = undefined;
     this.setState({
@@ -461,9 +465,10 @@ export class BrowserRemoteSession {
   }
 
   sendMouseButton(input: BrowserRemoteMouseButtonInput): void {
-    this.sendInputData(
-      buildStreamerMouseButtonInputMessage({ action: input.action, button: input.button ?? "primary" }),
-    );
+    const button = input.button ?? "primary";
+    if (input.action === "mousePress") this.heldMouseButtons.add(button);
+    else if (input.action === "mouseRelease") this.heldMouseButtons.delete(button);
+    this.sendInputData(buildStreamerMouseButtonInputMessage({ action: input.action, button }));
   }
 
   sendMouseScroll(input: BrowserRemoteMouseScrollInput): void {
@@ -471,7 +476,32 @@ export class BrowserRemoteSession {
   }
 
   sendKeyboardInput(input: BrowserRemoteKeyboardInput): void {
+    if (input.action === "keyboardPress") this.heldKeyboardValues.add(input.value);
+    else if (input.action === "keyboardRelease") this.heldKeyboardValues.delete(input.value);
     this.sendInputData(this.buildKeyboardInput(input));
+  }
+
+  releaseAllInputs(): void {
+    // 兜底：把当前“按住”的鼠标键与键盘键全部抬起。避免失焦 / 右键菜单 / 系统快捷键吞掉
+    // pointerup/keyup 后，在被控端留下卡住的按键（右键卡死、Alt 卡死等）。
+    const buttons = [...this.heldMouseButtons];
+    this.heldMouseButtons.clear();
+    const keys = [...this.heldKeyboardValues];
+    this.heldKeyboardValues.clear();
+    for (const button of buttons) {
+      try {
+        this.sendInputData(buildStreamerMouseButtonInputMessage({ action: "mouseRelease", button }));
+      } catch {
+        // 通道可能已关闭，忽略。
+      }
+    }
+    for (const value of keys) {
+      try {
+        this.sendInputData(this.buildKeyboardInput({ action: "keyboardRelease", value }));
+      } catch {
+        // 忽略。
+      }
+    }
   }
 
   async refreshConnectionStats(): Promise<BrowserRemoteSessionState> {

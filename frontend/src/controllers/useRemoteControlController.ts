@@ -1,4 +1,4 @@
-import type { KeyboardEvent, PointerEvent, WheelEvent } from "react";
+import type { ClipboardEvent, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router";
 
@@ -820,6 +820,9 @@ export function useRemoteControlController() {
 
   function handleRemoteStageKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!inputControlActive || !browserRemoteSession.current || event.repeat) return;
+    // Ctrl/Cmd+V 走“把本机剪贴板粘到远端”（onPaste 处理），不把 V 当普通按键发给远端，
+    // 否则远端会再粘一次它自己的剪贴板。
+    if ((event.ctrlKey || event.metaKey) && (event.key === "v" || event.key === "V")) return;
     event.preventDefault();
     try {
       browserRemoteSession.current.sendKeyboardInput({ action: "keyboardPress", value: toRemoteKeyValue(event) });
@@ -830,9 +833,30 @@ export function useRemoteControlController() {
 
   function handleRemoteStageKeyUp(event: KeyboardEvent<HTMLDivElement>) {
     if (!inputControlActive || !browserRemoteSession.current) return;
+    if ((event.ctrlKey || event.metaKey) && (event.key === "v" || event.key === "V")) return;
     event.preventDefault();
     try {
       browserRemoteSession.current.sendKeyboardInput({ action: "keyboardRelease", value: toRemoteKeyValue(event) });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  function handleRemoteStageBlur() {
+    // 失焦时把按住的键鼠全部抬起：Alt+Tab、右键菜单、系统快捷键会吞掉 keyup/pointerup，
+    // 否则会在被控端留下卡住的按键（右键卡死、Alt 卡死等）。
+    activePointerId.current = null;
+    browserRemoteSession.current?.releaseAllInputs();
+  }
+
+  function handleRemoteStagePaste(event: ClipboardEvent<HTMLDivElement>) {
+    // 直接粘贴：Ctrl/Cmd+V 时把本机剪贴板文本经文本通道发到远端（无需打开剪贴板面板）。
+    if (!inputControlActive || !browserRemoteSession.current) return;
+    const text = event.clipboardData?.getData("text") ?? "";
+    if (!text) return;
+    event.preventDefault();
+    try {
+      browserRemoteSession.current.sendTextData(text);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -1038,6 +1062,31 @@ export function useRemoteControlController() {
     }
   }, [controlChannelState, inputControlEnabled]);
 
+  useEffect(() => {
+    const releaseHeldInputs = () => browserRemoteSession.current?.releaseAllInputs();
+    const onVisibilityChange = () => {
+      if (document.hidden) releaseHeldInputs();
+    };
+    // 切换到其它应用/标签页（Alt+Tab、Win+D 等系统快捷键会抢走焦点）时，抬起所有按住的键鼠。
+    window.addEventListener("blur", releaseHeldInputs);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", releaseHeldInputs);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const stage = remoteStageRef.current;
+    if (!stage || !inputControlActive) return;
+    // React 的 onWheel 是被动监听，event.preventDefault() 无效，会导致整页跟随滚动；
+    // 用原生非被动监听把滚动锁在画面内（仅在已解锁输入时）。
+    // 注意：顶部从 react 导入了 WheelEvent 类型，会遮蔽 DOM 的同名类型；这里用 Event 即可。
+    const lockPageScroll = (event: Event) => event.preventDefault();
+    stage.addEventListener("wheel", lockPageScroll, { passive: false });
+    return () => stage.removeEventListener("wheel", lockPageScroll);
+  }, [inputControlActive]);
+
   const loginPageProps = {
     authJson,
     regionCode,
@@ -1168,6 +1217,8 @@ export function useRemoteControlController() {
     onReconnectRemote: () => void handleReconnectRemote(),
     onRemoteStageKeyDown: handleRemoteStageKeyDown,
     onRemoteStageKeyUp: handleRemoteStageKeyUp,
+    onRemoteStageBlur: handleRemoteStageBlur,
+    onRemoteStagePaste: handleRemoteStagePaste,
     onRemoteStagePointerCancel: handleRemoteStagePointerCancel,
     onRemoteStagePointerDown: handleRemoteStagePointerDown,
     onRemoteStagePointerMove: handleRemoteStagePointerMove,
