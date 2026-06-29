@@ -84,7 +84,7 @@ export function RemoteCommandBar({
         </button>
         <button onClick={onToggleInputControl} disabled={controlChannelState !== "open"}>
           {inputControlActive ? <CircleStop size={17} /> : <ShieldCheck size={17} />}
-          {inputControlActive ? "锁定输入控制" : "启用输入控制"}
+          {inputControlActive ? "暂停操作" : "开始操作远端"}
         </button>
       </div>
       {nextAction.detail ? (

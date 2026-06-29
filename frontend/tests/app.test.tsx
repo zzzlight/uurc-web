@@ -821,7 +821,7 @@ describe("App console", () => {
     expect(screen.getAllByText("服务端要求中转").length).toBeGreaterThan(0);
   });
 
-  it("keeps remote input locked until the operator explicitly enables control", async () => {
+  it("auto-enables remote input control once the control channel opens", async () => {
     vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
     currentParticipants = [];
     const user = userEvent.setup();
@@ -837,17 +837,21 @@ describe("App console", () => {
     });
     expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
 
-    await screen.findByText("输入控制锁定");
-    await user.type(screen.getByLabelText("远控文本输入"), "hello");
-    expect(screen.getByRole("button", { name: "发送文本" })).toBeDisabled();
-
-    await user.click(screen.getByRole("button", { name: "启用输入控制" }));
-    expect(screen.getByText("输入控制已启用")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发送文本" })).toBeEnabled();
+    // 连接后默认进入操作状态：自动启用输入控制并聚焦画面，无需手动点一下。
+    await screen.findByRole("button", { name: "暂停操作" });
     expect(document.activeElement).toHaveAttribute("aria-label", "远控画面");
 
     await user.keyboard("a");
     expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(0);
+
+    // 输入文本后可发送（已处于操作中、文本通道已打开）。
+    await user.type(screen.getByLabelText("远控文本输入"), "hello");
+    expect(screen.getByRole("button", { name: "发送文本" })).toBeEnabled();
+
+    // 暂停操作后，文本发送被禁用。
+    await user.click(screen.getByRole("button", { name: "暂停操作" }));
+    expect(screen.getByRole("button", { name: "开始操作远端" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送文本" })).toBeDisabled();
   });
 
   it("surfaces one-click reconnect after the control channel drops and reuses the current room", async () => {
@@ -917,7 +921,7 @@ describe("App console", () => {
     await waitFor(() => {
       expectSignalState("已连接");
     });
-    await user.click(screen.getByRole("button", { name: "启用输入控制" }));
+    await screen.findByRole("button", { name: "暂停操作" });
 
     expect(screen.getByRole("region", { name: "连接质量" })).toBeInTheDocument();
     expect(screen.getByText("等待质量采样")).toBeInTheDocument();
@@ -1090,7 +1094,7 @@ describe("App console", () => {
 
     expect(richMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
     expect(sparseMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
-    expect(metricValue(sparseMetrics, "输入")).toBe("已锁定");
+    expect(metricValue(sparseMetrics, "输入")).toBe("已暂停");
     expect(metricValue(sparseMetrics, "接收码率")).toBe("采样中");
     expect(metricValue(sparseMetrics, "分辨率")).toBe("暂无");
   });
@@ -1119,9 +1123,9 @@ describe("App console", () => {
       connectionPathLabel: "UU 中转",
     });
 
-    expect(quality.detail).toContain("输入 已锁定");
+    expect(quality.detail).toContain("输入 已暂停");
     expect(quality.detail).not.toContain("控制 已打开");
-    expect(metricValue(quality.metrics, "输入")).toBe("已锁定");
+    expect(metricValue(quality.metrics, "输入")).toBe("已暂停");
     expect(metricValue(quality.metrics, "控制通道")).toBe("已打开");
     expect(metricValue(quality.metrics, "文本通道")).toBe("已打开");
   });
@@ -1138,7 +1142,7 @@ describe("App console", () => {
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
-    await user.click(screen.getByRole("button", { name: "启用输入控制" }));
+    await screen.findByRole("button", { name: "暂停操作" });
 
     const stage = screen.getByRole("application", { name: "远控画面" }) as HTMLDivElement;
     // 全屏改为对包含命令栏的容器（.control-stage-frame，即 stage 的父元素）请求，

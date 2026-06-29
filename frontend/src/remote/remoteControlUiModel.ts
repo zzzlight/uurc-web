@@ -160,8 +160,8 @@ export function getNextAction(input: {
   }
   if (!input.inputControlActive && input.controlChannelState === "open") {
     return {
-      label: "解锁输入",
-      detail: "画面已连接，键鼠仍锁定",
+      label: "开始操作",
+      detail: "画面已连接，点此开始操作远端",
       disabled: input.busy !== null,
     };
   }
@@ -597,8 +597,8 @@ function buildConnectionQualityMetrics(input: {
 }
 
 function formatInputControlState(inputControlActive: boolean, controlChannelState: RTCDataChannelState): string {
-  if (inputControlActive) return "已启用";
-  if (controlChannelState === "open") return "已锁定";
+  if (inputControlActive) return "操作中";
+  if (controlChannelState === "open") return "已暂停";
   return "不可用";
 }
 

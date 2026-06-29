@@ -150,6 +150,7 @@ export function useRemoteControlController() {
   const remoteStageRef = useRef<HTMLDivElement | null>(null);
   const remoteStageFrameRef = useRef<HTMLDivElement | null>(null);
   const autoConnectAttemptedDeviceRef = useRef<string>("");
+  const controlChannelOpenedRef = useRef(false);
   const activePointerId = useRef<number | null>(null);
   const navigate = useNavigate();
   const controlRouteMatch = useMatch("/devices/:deviceId/control");
@@ -967,9 +968,9 @@ export function useRemoteControlController() {
   const textChannelLabel = formatDataChannelState(textChannelState);
   const inputControlActive = inputControlEnabled && controlChannelState === "open";
   const inputControlLabel = inputControlActive
-    ? "已启用"
+    ? "操作中"
     : controlChannelState === "open"
-      ? "已锁定"
+      ? "已暂停"
       : controlChannelLabel;
   const canSendRemoteText = inputControlActive && textChannelState === "open" && remoteTextInput.trim().length > 0;
   const decodeStalledPersisted =
@@ -1109,6 +1110,18 @@ export function useRemoteControlController() {
       setInputControlEnabled(false);
     }
   }, [controlChannelState, inputControlEnabled]);
+
+  useEffect(() => {
+    if (controlChannelState !== "open") {
+      controlChannelOpenedRef.current = false;
+      return;
+    }
+    if (controlChannelOpenedRef.current) return;
+    // 连接成功（控制通道打开）后默认进入操作状态：自动启用输入控制并聚焦画面，无需再手动点一下。
+    controlChannelOpenedRef.current = true;
+    setInputControlEnabled(true);
+    remoteStageRef.current?.focus();
+  }, [controlChannelState]);
 
   useEffect(() => {
     try {
