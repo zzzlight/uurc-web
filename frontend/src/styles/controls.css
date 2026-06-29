@@ -1,6 +1,6 @@
 .control-command-bar {
-  /* 默认是画面上方的常驻工具栏（不再悬浮遮挡画面、也不再半透明，主操作清晰可见）；
-     拖动后由 useDraggableFloatingPanel 切到 position:fixed 浮动到窗口任意位置。 */
+  /* 默认是画面上方的常驻工具栏，固定在原位、不可拖动、不遮挡画面；
+     仅在全屏时由 useDraggableFloatingPanel 切到 position:fixed 悬浮、可拖到画面内任意位置。 */
   position: relative;
   z-index: 3;
   display: flex;
@@ -94,6 +94,48 @@
 .control-command-bar .primary-action-button:hover:not(:disabled) {
   border-color: rgba(147, 197, 253, 0.75);
   background: rgba(29, 78, 216, 0.96);
+}
+
+/* 仅查看 / 控制中：分段开关，高亮当前状态，点另一段切换，带明确的“切换”感。 */
+.control-command-bar .control-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.control-command-bar .control-mode-switch button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+  font-weight: 500;
+}
+
+.control-command-bar .control-mode-switch button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.control-command-bar .control-mode-switch button.is-active {
+  background: rgba(37, 99, 235, 0.95);
+  color: #ffffff;
+}
+
+.control-command-bar .control-mode-switch button.is-active:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.95);
+}
+
+.control-command-bar .operation-note {
+  flex-basis: 100%;
+  margin: 2px 2px 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.66);
 }
 
 .remote-input-row {

@@ -166,20 +166,27 @@
   aspect-ratio: auto;
 }
 
-/* 全屏：包含命令栏的容器铺满整个视口，命令栏在上、画面 flex 撑满剩余空间。
+/* 全屏：包含命令栏的容器铺满整个视口，画面填满，命令栏悬浮在画面顶部居中（可拖动）。
    用 class（由 isFullscreen 状态驱动）而非 :fullscreen 伪类，兼容性更可靠。 */
 .control-stage-frame--fullscreen {
   width: 100vw;
   height: 100vh;
   background: #000;
-  display: flex;
-  flex-direction: column;
+}
+
+/* 全屏时命令栏悬浮在画面之上，不占布局、不挤压画面；拖动后由 inline 样式切到 fixed 定位。 */
+.control-stage-frame--fullscreen .control-command-bar {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  margin: 0;
 }
 
 .control-stage-frame--fullscreen .control-remote-stage {
-  flex: 1 1 auto;
   width: 100%;
-  height: auto;
+  height: 100vh;
   max-height: none;
   min-height: 0;
   aspect-ratio: auto;

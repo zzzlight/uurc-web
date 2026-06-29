@@ -23,7 +23,7 @@ export function RemoteConnectionQualityPanel({
         </div>
         <span>{connectionQuality.title}</span>
       </header>
-      <p>{connectionQuality.detail}</p>
+      {connectionQuality.detail ? <p>{connectionQuality.detail}</p> : null}
       <div className="quality-metrics" aria-label="连接质量指标">
         {connectionQuality.metrics.map((metric) => (
           <span className="quality-metric" key={metric.label}>

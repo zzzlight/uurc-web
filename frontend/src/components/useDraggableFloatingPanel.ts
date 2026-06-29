@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 
 type FloatingPanelPosition = {
   left: number;
@@ -15,13 +15,18 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function useDraggableFloatingPanel<T extends HTMLElement>() {
+export function useDraggableFloatingPanel<T extends HTMLElement>(enabled = true) {
   const panelRef = useRef<T | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const [position, setPosition] = useState<FloatingPanelPosition | null>(null);
 
+  // 关闭拖拽（如退出全屏）时清掉自定义坐标，让工具栏回到 CSS 中定义的固定原位。
+  useEffect(() => {
+    if (!enabled) setPosition(null);
+  }, [enabled]);
+
   const panelStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!position) return undefined;
+    if (!enabled || !position) return undefined;
     // 拖动后用 position:fixed + 视口坐标，使工具栏可以移出画面区域、停到窗口任意位置。
     return {
       position: "fixed",
@@ -29,7 +34,7 @@ export function useDraggableFloatingPanel<T extends HTMLElement>() {
       top: `${position.top}px`,
       transform: "none",
     };
-  }, [position]);
+  }, [enabled, position]);
 
   const moveToPointer = useCallback((clientX: number, clientY: number) => {
     const panel = panelRef.current;

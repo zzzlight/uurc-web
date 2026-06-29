@@ -47,6 +47,23 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
+  /* 默认禁止文本选中、去掉移动端点按高亮，让界面更接近原生客户端，
+     避免误双击把按钮/标题选成一片蓝。 */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 仅在真正需要复制的地方（输入框、代码/调试块）恢复可选中。 */
+input,
+textarea,
+select,
+[contenteditable="true"],
+code,
+pre,
+.response-box {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 button,

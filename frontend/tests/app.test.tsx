@@ -841,16 +841,18 @@ describe("App console", () => {
     });
     expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
 
-    // 连接后默认进入操作状态：自动启用输入控制并聚焦画面，无需手动点一下。
-    await screen.findByRole("button", { name: "暂停操作" });
+    // 连接后默认进入控制状态：自动启用输入控制并聚焦画面，无需手动点一下。
+    const controlSegment = await screen.findByRole("button", { name: "控制中" });
+    expect(controlSegment).toHaveAttribute("aria-pressed", "true");
     expect(document.activeElement).toHaveAttribute("aria-label", "远控画面");
 
     await user.keyboard("a");
     expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(0);
 
-    // 暂停操作后回到“开始操作远端”。
-    await user.click(screen.getByRole("button", { name: "暂停操作" }));
-    expect(screen.getByRole("button", { name: "开始操作远端" })).toBeInTheDocument();
+    // 点“仅查看”暂停操作，开关切回仅查看态。
+    await user.click(screen.getByRole("button", { name: "仅查看" }));
+    expect(screen.getByRole("button", { name: "仅查看" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "控制中" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("surfaces one-click reconnect after the control channel drops and reuses the current room", async () => {
@@ -920,7 +922,7 @@ describe("App console", () => {
     await waitFor(() => {
       expectSignalState("已连接");
     });
-    await screen.findByRole("button", { name: "暂停操作" });
+    await screen.findByRole("button", { name: "控制中" });
 
     expect(screen.getByRole("region", { name: "连接质量" })).toBeInTheDocument();
     expect(screen.getByText("等待质量采样")).toBeInTheDocument();
@@ -1093,7 +1095,7 @@ describe("App console", () => {
 
     expect(richMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
     expect(sparseMetrics.map((metric) => metric.label)).toEqual(expectedLabels);
-    expect(metricValue(sparseMetrics, "输入")).toBe("已暂停");
+    expect(metricValue(sparseMetrics, "输入")).toBe("仅查看");
     expect(metricValue(sparseMetrics, "接收码率")).toBe("采样中");
     expect(metricValue(sparseMetrics, "分辨率")).toBe("暂无");
   });
@@ -1122,17 +1124,15 @@ describe("App console", () => {
       connectionPathLabel: "UU 中转",
     });
 
-    expect(quality.detail).toContain("输入 已暂停");
-    expect(quality.detail).not.toContain("控制 已打开");
-    expect(metricValue(quality.metrics, "输入")).toBe("已暂停");
+    // 输入状态（仅查看）与控制数据通道状态（已打开）分别展示，互不混淆。
+    expect(metricValue(quality.metrics, "输入")).toBe("仅查看");
     expect(metricValue(quality.metrics, "控制通道")).toBe("已打开");
     expect(metricValue(quality.metrics, "文本通道")).toBe("已打开");
   });
 
-  it("provides a draggable remote toolbar with view mode, fullscreen, and shortcut actions", async () => {
+  it("docks the toolbar by default and only floats/drags it in fullscreen, with view mode and shortcuts", async () => {
     vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
     currentParticipants = [];
-    const requestFullscreen = vi.fn(async () => {});
     const user = userEvent.setup();
     render(<App />);
 
@@ -1141,16 +1141,33 @@ describe("App console", () => {
     await waitFor(() => {
       expect(requestLog.filter((call) => call.path === "/api/remote/signal/control")).toHaveLength(1);
     });
-    await screen.findByRole("button", { name: "暂停操作" });
+    await screen.findByRole("button", { name: "控制中" });
 
     const stage = screen.getByRole("application", { name: "远控画面" }) as HTMLDivElement;
-    // 全屏改为对包含命令栏的容器（.control-stage-frame，即 stage 的父元素）请求，
-    // 以避免全屏后命令栏（解锁输入/退出全屏等）一并消失。
+    // 全屏对包含命令栏的容器（.control-stage-frame，即 stage 的父元素）请求；
+    // 用 mock 模拟浏览器进入全屏：设置 fullscreenElement 并派发 fullscreenchange。
     const stageFrame = stage.parentElement as HTMLDivElement;
+    const requestFullscreen = vi.fn(async () => {
+      Object.defineProperty(document, "fullscreenElement", { configurable: true, value: stageFrame });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
     stageFrame.requestFullscreen = requestFullscreen;
     const toolbar = screen.getByLabelText("远控主流程");
-    const dragHandle = screen.getByRole("button", { name: "拖动工具栏" });
-    expect(dragHandle).toBeInTheDocument();
+
+    // 非全屏：工具栏固定在原位——没有拖动手柄，也没有 fixed 浮动定位。
+    expect(screen.queryByRole("button", { name: "拖动工具栏" })).not.toBeInTheDocument();
+    expect(toolbar.style.position).toBe("");
+
+    expect(stage).toHaveClass("remote-stage-fit");
+    await user.click(screen.getByRole("button", { name: "填充画面" }));
+    expect(stage).toHaveClass("remote-stage-fill");
+    await user.click(screen.getByRole("button", { name: "适应画面" }));
+    expect(stage).toHaveClass("remote-stage-fit");
+
+    // 进入全屏后才出现拖动手柄，并可把工具栏悬浮拖到画面内任意位置。
+    await user.click(screen.getByRole("button", { name: "全屏" }));
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    const dragHandle = await screen.findByRole("button", { name: "拖动工具栏" });
     vi.spyOn(toolbar.parentElement as HTMLElement, "getBoundingClientRect").mockReturnValue(
       rectFrom({ left: 0, top: 0, width: 900, height: 500 }),
     );
@@ -1163,21 +1180,16 @@ describe("App console", () => {
     await waitFor(() => {
       expect(toolbar).toHaveStyle({ left: "410px", top: "90px", transform: "none" });
     });
-    expect(stage).toHaveClass("remote-stage-fit");
-
-    await user.click(screen.getByRole("button", { name: "填充画面" }));
-    expect(stage).toHaveClass("remote-stage-fill");
-    await user.click(screen.getByRole("button", { name: "适应画面" }));
-    expect(stage).toHaveClass("remote-stage-fit");
-
-    await user.click(screen.getByRole("button", { name: "全屏" }));
-    expect(requestFullscreen).toHaveBeenCalledTimes(1);
 
     const sentBefore = TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length ?? 0;
     await user.click(screen.getByText("快捷键"));
     await user.click(screen.getByRole("button", { name: "Ctrl Alt Del" }));
     expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(sentBefore);
     expect(screen.getByRole("button", { name: "Cmd Opt Esc" })).toBeInTheDocument();
+
+    // 清理：退出全屏，避免 fullscreenElement 残留影响后续用例。
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: null });
+    document.dispatchEvent(new Event("fullscreenchange"));
   });
 
   it("shows a first-class disconnect action that closes the browser remote session", async () => {

@@ -18,7 +18,7 @@ export function RemoteVideoSourcePanel({
         </div>
         <span>{hasSources ? `${remoteVideoStreams.length} 路` : "等待画面"}</span>
       </header>
-      <p>{hasSources ? "选择主画面，其他视频轨保持待命。" : "连接建立后会显示可用视频轨。"}</p>
+      <p>{hasSources ? "选择要显示的画面" : "连接后显示可用画面"}</p>
       <div className="video-source-list">
         {hasSources ? (
           remoteVideoStreams.map((video, index) => (

@@ -91,77 +91,77 @@ export function getNextAction(input: {
   if (!input.loggedIn) {
     return {
       label: "登录账号",
-      detail: "用手机号登录或导入登录态",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (!input.selectedDeviceId || (!input.remoteAssistanceTarget && input.deviceTotal === 0)) {
     return {
       label: "刷新设备",
-      detail: "刷新设备",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (input.selectedDeviceIsCurrentAuthDevice) {
     return {
       label: "更换账号",
-      detail: "不能控制当前登录态自身设备",
+      detail: "不能控制本机",
       disabled: true,
     };
   }
   if (input.roomRequiresTakeover) {
     return {
       label: "接管并开始连接",
-      detail: "当前设备已有控制端在线",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (!input.roomJoinedForSelectedDevice) {
     return {
       label: input.forceJoin ? "接管并开始连接" : "开始连接",
-      detail: input.forceJoin ? "接管当前控制者并建立远控" : "加入房间并建立远控",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (input.signalGatewayErrored) {
     return {
       label: "重新开始连接",
-      detail: "刷新 RoomConfig 并重新建立远控",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (!input.signalGatewayMatchesRoom) {
     return {
       label: "开始连接",
-      detail: "连接远控服务并打开画面",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (input.browserStage === "idle") {
     return {
       label: "开始连接",
-      detail: "建立远控画面",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (input.browserStage !== "connected") {
     return {
       label: "等待画面",
-      detail: "等待受控端返回画面",
+      detail: "",
       disabled: true,
     };
   }
   if (input.browserConnectionRecoverable) {
     return {
       label: "重新连接",
-      detail: "复用当前房间并重建浏览器远控会话",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
   if (!input.inputControlActive && input.controlChannelState === "open") {
     return {
       label: "开始操作",
-      detail: "画面已连接，点此开始操作远端",
+      detail: "",
       disabled: input.busy !== null,
     };
   }
@@ -500,7 +500,7 @@ export function getRemoteConnectionQuality(input: {
     return {
       state: "pending",
       title: "等待连接",
-      detail: "远控画面尚未建立。",
+      detail: "",
       metrics,
     };
   }
@@ -508,7 +508,7 @@ export function getRemoteConnectionQuality(input: {
     return {
       state: "bad",
       title: "控制连接断开",
-      detail: "自动重连或手动重连可以复用当前房间。",
+      detail: "",
       metrics,
     };
   }
@@ -532,25 +532,16 @@ export function getRemoteConnectionQuality(input: {
     return {
       state: "good",
       title: "连接正常",
-      detail: formatConnectionQualityDetail(input),
+      detail: "",
       metrics,
     };
   }
   return {
     state: "pending",
     title: "等待质量采样",
-    detail: formatConnectionQualityDetail(input),
+    detail: "",
     metrics,
   };
-}
-
-function formatConnectionQualityDetail(input: {
-  controlChannelState: RTCDataChannelState;
-  inputControlActive: boolean;
-  textChannelState: RTCDataChannelState;
-  connectionPathLabel: string;
-}): string {
-  return `${input.connectionPathLabel} · 输入 ${formatInputControlState(input.inputControlActive, input.controlChannelState)} · 文本通道 ${formatDataChannelState(input.textChannelState)}`;
 }
 
 function buildConnectionQualityMetrics(input: {
@@ -597,9 +588,9 @@ function buildConnectionQualityMetrics(input: {
 }
 
 function formatInputControlState(inputControlActive: boolean, controlChannelState: RTCDataChannelState): string {
-  if (inputControlActive) return "操作中";
-  if (controlChannelState === "open") return "已暂停";
-  return "不可用";
+  if (inputControlActive) return "控制中";
+  if (controlChannelState === "open") return "仅查看";
+  return "未连接";
 }
 
 function bitrateFromBytes(bytes: number | undefined, intervalMs: number | undefined): number | undefined {

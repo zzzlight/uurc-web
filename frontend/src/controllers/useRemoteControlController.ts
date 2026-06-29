@@ -981,9 +981,9 @@ export function useRemoteControlController() {
   const textChannelLabel = formatDataChannelState(textChannelState);
   const inputControlActive = inputControlEnabled && controlChannelState === "open";
   const inputControlLabel = inputControlActive
-    ? "操作中"
+    ? "控制中"
     : controlChannelState === "open"
-      ? "已暂停"
+      ? "仅查看"
       : controlChannelLabel;
   const decodeStalledPersisted =
     browserRemoteState.videoFlow?.status === "decode_stalled" && decodeStalledStreak >= 2;
