@@ -479,6 +479,7 @@ export class BrowserRemoteSession {
 
     const report = await this.peer.getStats();
     const sampledAtMs = this.now();
+    const previousFlowStatus = this.state.videoFlow?.status;
     const selectedCandidatePair = readSelectedCandidatePair(report);
     const inboundVideo = readInboundVideoStats(report);
     const videoFlow = diagnoseVideoFlow({
@@ -510,6 +511,18 @@ export class BrowserRemoteSession {
       inboundVideo,
       selectedCandidatePair: selectedCandidatePair.pair,
     });
+    // 诊断：画面从“正常”转入停滞时打一条醒目日志，便于在浏览器控制台定位“卡死那一刻”的成因。
+    if (
+      videoFlow.status !== previousFlowStatus &&
+      (videoFlow.status === "transport_stalled" || videoFlow.status === "decode_stalled")
+    ) {
+      console.warn(
+        `[uurc] 画面停滞 → ${videoFlow.status}（${videoFlow.detail}）` +
+          ` path=${selectedCandidatePair.connectionPath}` +
+          ` control=${this.state.dataChannels[STREAMER_DATA_CHANNEL_LABELS.control] ?? "?"}`,
+        { delta: videoFlow.delta, candidatePair: selectedCandidatePair.pair, inboundVideo },
+      );
+    }
     return this.getState();
   }
 
@@ -604,6 +617,7 @@ export class BrowserRemoteSession {
       channel.onclose = () => {
         this.recordDebugEvent("data_channel", `${label} close`, { label, readyState: channel.readyState });
         if (label === STREAMER_DATA_CHANNEL_LABELS.control) {
+          console.warn(`[uurc] 控制数据通道关闭（${label}）→ 心跳停止，被控端可能停推画面`);
           this.stopEchoHeartbeat();
         }
         this.updateDataChannelState(label);
@@ -611,6 +625,7 @@ export class BrowserRemoteSession {
       channel.onerror = () => {
         this.recordDebugEvent("data_channel", `${label} error`, { label, readyState: channel.readyState });
         if (label === STREAMER_DATA_CHANNEL_LABELS.control) {
+          console.warn(`[uurc] 控制数据通道错误（${label}），readyState=${channel.readyState}`);
           this.stopEchoHeartbeat();
         }
         this.updateDataChannelState(label);
@@ -668,6 +683,9 @@ export class BrowserRemoteSession {
       if (!sdp) return;
       const signalingState = this.peer.signalingState;
       if (signalingState !== undefined && signalingState !== "have-local-offer") {
+        console.warn(
+          `[uurc] 忽略状态不匹配的 SOAC ${type}（signalingState=${signalingState}）→ 重协商未接上，画面可能停滞`,
+        );
         this.recordDebugEvent("signal", "忽略状态不匹配的 SOAC answer", {
           type,
           signalingState,
@@ -761,6 +779,9 @@ export class BrowserRemoteSession {
     if (notify.transportType !== undefined) {
       this.iceNetworkType = notify.transportType;
     }
+    console.warn(
+      `[uurc] 收到切网通知 → 发起 ICE restart（transportType=${notify.transportType ?? "?"}），画面可能短暂停滞`,
+    );
     this.peer.restartIce?.();
     this.recordDebugEvent("signal", "发起 ICE restart", {
       iceId: notify.iceId ?? this.iceId,

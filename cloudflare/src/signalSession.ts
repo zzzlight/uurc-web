@@ -367,6 +367,8 @@ export class RemoteSignalSession extends DurableObject<SignalSessionEnv> {
     const event = data[0];
     const payload = data.slice(1);
     for (const normalized of await normalizeSignalGatewayInboundEventsAsync(event, payload, workerSignalGatewayBinary)) {
+      // 诊断：把入站信令事件打到 Workers Logs，便于定位卡死时是否伴随 leave / 切网通知 / 重协商。
+      console.log(`[uurc-do] inbound ${normalized.event}`);
       this.recordEvent({
         direction: "inbound",
         event: normalized.event,
@@ -432,6 +434,7 @@ export class RemoteSignalSession extends DurableObject<SignalSessionEnv> {
   }
 
   private handleSocketClose(event: CloseEvent): void {
+    console.log(`[uurc-do] upstream socket close code=${event.code} reason=${event.reason} manual=${this.manualClose}`);
     for (const [id, pending] of this.pendingAcks) {
       clearTimeout(pending.timeout);
       pending.reject(new Error(`signal socket closed before ${pending.event} ack code=${event.code} reason=${event.reason}`));
@@ -452,6 +455,7 @@ export class RemoteSignalSession extends DurableObject<SignalSessionEnv> {
   }
 
   private handleSocketError(): void {
+    console.log(`[uurc-do] upstream socket error`);
     const status = this.readStatus();
     if (status.status === "connected" || status.status === "connecting") {
       this.setStatus({
