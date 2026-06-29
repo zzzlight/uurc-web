@@ -22,7 +22,9 @@ export function useDraggableFloatingPanel<T extends HTMLElement>() {
 
   const panelStyle = useMemo<CSSProperties | undefined>(() => {
     if (!position) return undefined;
+    // 拖动后用 position:fixed + 视口坐标，使工具栏可以移出画面区域、停到窗口任意位置。
     return {
+      position: "fixed",
       left: `${position.left}px`,
       top: `${position.top}px`,
       transform: "none",
@@ -32,19 +34,17 @@ export function useDraggableFloatingPanel<T extends HTMLElement>() {
   const moveToPointer = useCallback((clientX: number, clientY: number) => {
     const panel = panelRef.current;
     const dragState = dragStateRef.current;
-    const parent = panel?.parentElement;
-    if (!panel || !dragState || !parent) return;
+    if (!panel || !dragState) return;
 
-    const parentRect = parent.getBoundingClientRect();
+    // 以视口为边界（而非父容器），允许拖出远控画面，仅约束在窗口内避免拖丢。
     const panelRect = panel.getBoundingClientRect();
-    const minLeft = 8;
-    const minTop = 8;
-    const maxLeft = Math.max(minLeft, parentRect.width - panelRect.width - 8);
-    const maxTop = Math.max(minTop, parentRect.height - panelRect.height - 8);
+    const margin = 8;
+    const maxLeft = Math.max(margin, window.innerWidth - panelRect.width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - panelRect.height - margin);
 
     setPosition({
-      left: clamp(clientX - parentRect.left - dragState.offsetX, minLeft, maxLeft),
-      top: clamp(clientY - parentRect.top - dragState.offsetY, minTop, maxTop),
+      left: clamp(clientX - dragState.offsetX, margin, maxLeft),
+      top: clamp(clientY - dragState.offsetY, margin, maxTop),
     });
   }, []);
 

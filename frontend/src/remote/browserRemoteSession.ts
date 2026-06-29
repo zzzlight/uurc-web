@@ -17,6 +17,7 @@ import {
   encodeStreamerTextMessage,
   formatStreamerSignalControlFailure,
   getStreamerSignalControlFailure,
+  STREAMER_ROM_MESSAGE_TYPES,
   STREAMER_SIMPLE_ACTION_TYPES,
   type DecodedStreamerControlMessage,
   type StreamerConnectionPath,
@@ -73,6 +74,7 @@ export interface BrowserRemoteSessionOptions {
   getVideoCodecPreferences?: () => RTCRtpCodec[];
   now?: () => number;
   onRemoteStream?: (stream: MediaStream) => void;
+  onRemoteClipboard?: (text: string) => void;
   onStateChange?: (state: BrowserRemoteSessionState) => void;
 }
 
@@ -954,6 +956,7 @@ export class BrowserRemoteSession {
 
   private handleControlDataMessage(message: DecodedStreamerControlMessage): void {
     this.applyCaptureChangeInputIndex(message);
+    this.applyRemoteClipboard(message);
 
     const simpleAction = message.simpleAction;
     if (!simpleAction || simpleAction.action !== STREAMER_SIMPLE_ACTION_TYPES.ACTION_TYPE_ECHO_REQUEST) return;
@@ -964,6 +967,14 @@ export class BrowserRemoteSession {
     }
 
     this.sendEchoResponse(responseSequence);
+  }
+
+  private applyRemoteClipboard(message: DecodedStreamerControlMessage): void {
+    // 被控端的剪贴板（autoClipboard）以 sendToRom + RomMsg_Text 文本回传，与我们发送文本的结构对称。
+    const rom = message.sendToRom;
+    if (!rom || rom.inputType !== STREAMER_ROM_MESSAGE_TYPES.RomMsg_Text || !rom.inputMessage) return;
+    this.recordDebugEvent("data_recv", "收到远端剪贴板", { length: rom.inputMessage.length });
+    this.options.onRemoteClipboard?.(rom.inputMessage);
   }
 
   private applyCaptureChangeInputIndex(message: DecodedStreamerControlMessage): void {

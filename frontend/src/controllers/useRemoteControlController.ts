@@ -127,6 +127,7 @@ export function useRemoteControlController() {
   const [clipboardStatus, setClipboardStatus] = useState("尚未读取本机剪贴板");
   const [autoReconnectEnabled, setAutoReconnectEnabled] = useState(true);
   const [autoReconnectAttemptCount, setAutoReconnectAttemptCount] = useState(0);
+  const [decodeStalledStreak, setDecodeStalledStreak] = useState(0);
   const [autoReconnectStatus, setAutoReconnectStatus] = useState("");
   const [inputControlEnabled, setInputControlEnabled] = useState(false);
   const [sdpTransportMode, setSdpTransportMode] = useState<SdpTransportMode>("gzip");
@@ -548,6 +549,7 @@ export function useRemoteControlController() {
         sendSignalSoac: sendRemoteSignalSoac,
       },
       onRemoteStream: handleRemoteMediaStream,
+      onRemoteClipboard: handleRemoteClipboard,
       onStateChange: setBrowserRemoteState,
     });
     browserRemoteSession.current = session;
@@ -682,6 +684,27 @@ export function useRemoteControlController() {
       if (browserRemoteSession.current) setBrowserRemoteState(browserRemoteSession.current.getState());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  function handleRemoteClipboard(text: string) {
+    // 反向剪贴板同步：被控端剪贴板变化时回传文本，写入本机剪贴板（失败则保留在面板供手动处理）。
+    if (!text) return;
+    setClipboardText(text);
+    void writeRemoteClipboardToLocal(text);
+  }
+
+  async function writeRemoteClipboardToLocal(text: string) {
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+    if (!clipboard?.writeText) {
+      setClipboardStatus(`已收到远端剪贴板（${text.length} 字符），当前环境不支持写入本机剪贴板`);
+      return;
+    }
+    try {
+      await clipboard.writeText(text);
+      setClipboardStatus(`已同步远端剪贴板到本机（${text.length} 字符）`);
+    } catch {
+      setClipboardStatus(`已收到远端剪贴板（${text.length} 字符），写入本机被拒绝，可在剪贴板面板手动处理`);
     }
   }
 
@@ -937,13 +960,19 @@ export function useRemoteControlController() {
       ? "已锁定"
       : controlChannelLabel;
   const canSendRemoteText = inputControlActive && textChannelState === "open" && remoteTextInput.trim().length > 0;
+  const decodeStalledPersisted =
+    browserRemoteState.videoFlow?.status === "decode_stalled" && decodeStalledStreak >= 2;
   const browserConnectionRecoverable =
     browserRemoteState.stage === "connected" &&
-    (controlChannelState === "closed" || browserRemoteState.videoFlow?.status === "transport_stalled");
+    (controlChannelState === "closed" ||
+      browserRemoteState.videoFlow?.status === "transport_stalled" ||
+      decodeStalledPersisted);
   const remoteRecoveryLabel = browserConnectionRecoverable
     ? controlChannelState === "closed"
       ? "控制通道已断开"
-      : "视频链路已停滞"
+      : decodeStalledPersisted
+        ? "画面解码停滞"
+        : "视频链路已停滞"
     : "";
   const autoReconnectLabel = browserConnectionRecoverable && autoReconnectEnabled
     ? autoReconnectStatus || "自动重连准备中"
@@ -960,6 +989,13 @@ export function useRemoteControlController() {
     textChannelState,
     connectionPathLabel,
   });
+
+  useEffect(() => {
+    // 累计连续“解码停滞”采样数：要求持续 ≥2 次才触发自动恢复，避免偶发解码抖动误重连。
+    setDecodeStalledStreak((streak) =>
+      browserRemoteState.videoFlow?.status === "decode_stalled" ? streak + 1 : 0,
+    );
+  }, [browserRemoteState.videoFlow]);
 
   useEffect(() => {
     if (!browserConnectionRecoverable) {
