@@ -38,6 +38,7 @@ let joinRoomFailure: boolean;
 let lastControlIceId: string;
 let currentControlForceRelay: boolean;
 let currentParticipants: Array<Record<string, unknown>>;
+let currentAssistControlMode: string;
 let currentSignalServers: string[];
 let signalStartError: boolean;
 let remoteTrackPlan: Array<{ id: string; kind: "audio" | "video" }>;
@@ -49,6 +50,7 @@ describe("App console", () => {
     joinRoomFailure = false;
     lastControlIceId = "";
     currentControlForceRelay = false;
+    currentAssistControlMode = "by_password";
     currentSignalServers = ["wss://signal.example"];
     signalStartError = false;
     remoteTrackPlan = [];
@@ -236,6 +238,25 @@ describe("App console", () => {
       expect(uuCalls("/api/v2/room/share/cancel_remote_assist")).toHaveLength(1);
     });
     expect(screen.getAllByText("已取消协助").length).toBeGreaterThan(0);
+  });
+
+  it("waits for partner confirmation when the verification code is left empty", async () => {
+    vi.stubGlobal("RTCPeerConnection", TestPeerConnection);
+    currentParticipants = [];
+    currentAssistControlMode = "password_confirmation";
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "我的设备" });
+    await user.type(screen.getByLabelText("伙伴的设备 ID"), "982123456");
+    // 故意不填验证码：应直接走“等待对方确认”
+    await user.click(screen.getByRole("button", { name: /^连接$/ }));
+
+    await screen.findByRole("heading", { name: "Partner PC" });
+    expect(window.location.pathname).toBe("/devices/982123456/control");
+    expect(uuCalls("/api/v2/room/join/share/by_code")).toHaveLength(0);
+    expect(uuCalls("/api/v2/room/join/share/by_confirmation")).toHaveLength(1);
+    expect(screen.getAllByText("远程协助 · 验证码或确认").length).toBeGreaterThan(0);
   });
 
   it("preserves a control page deep link while restoring login state on refresh", async () => {
@@ -1615,7 +1636,7 @@ async function handleUuProxyFetch(body: unknown): Promise<Response> {
       code: 0,
       data: {
         can_remote_control: true,
-        control_mode: "by_password",
+        control_mode: currentAssistControlMode,
       },
     }));
   }

@@ -426,7 +426,7 @@ export function useRemoteControlController() {
             targetPlatform: assistanceTargetPlatform,
           });
         }
-      } else if (modeResult.controlMode === "by_confirmation") {
+      } else if (modeResult.controlMode === "by_confirmation" || modeResult.controlMode === "password_confirmation") {
         setAssistanceNotice("正在等待伙伴设备确认...");
         joined = await joinRemoteAssistanceByConfirmation({
           connectId,
