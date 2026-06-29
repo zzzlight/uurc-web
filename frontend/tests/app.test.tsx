@@ -869,7 +869,7 @@ describe("App console", () => {
 
     TestPeerConnection.closeDataChannel("CONTROL_DATA_CHANNEL");
 
-    await screen.findByText("控制通道已断开");
+    await screen.findByText("控制连接已断开");
     const reconnectButton = screen.getByRole("button", { name: "重新连接" });
     expect(reconnectButton).toBeEnabled();
 

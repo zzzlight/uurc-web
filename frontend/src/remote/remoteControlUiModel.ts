@@ -461,17 +461,17 @@ export function formatInboundVideoStats(stats: BrowserRemoteSessionState["inboun
 
 export function formatVideoFlow(state: BrowserRemoteSessionState): string {
   const flow = state.videoFlow;
-  if (!flow) return state.stage === "connected" ? "等待采样" : "-";
+  if (!flow) return state.stage === "connected" ? "连接中" : "-";
   switch (flow.status) {
     case "receiving":
       return "播放中";
     case "decode_stalled":
-      return "解码停帧";
+      return "画面卡顿";
     case "transport_stalled":
-      return "收包停滞";
+      return "画面中断";
     case "waiting":
     default:
-      return "等待视频";
+      return "等待画面";
   }
 }
 
@@ -507,7 +507,7 @@ export function getRemoteConnectionQuality(input: {
   if (input.controlChannelState === "closed") {
     return {
       state: "bad",
-      title: "控制通道断开",
+      title: "控制连接断开",
       detail: "自动重连或手动重连可以复用当前房间。",
       metrics,
     };
@@ -515,7 +515,7 @@ export function getRemoteConnectionQuality(input: {
   if (input.state.videoFlow?.status === "transport_stalled") {
     return {
       state: "bad",
-      title: "视频链路停滞",
+      title: "画面中断",
       detail: input.state.videoFlow.detail,
       metrics,
     };
@@ -523,7 +523,7 @@ export function getRemoteConnectionQuality(input: {
   if (input.state.videoFlow?.status === "decode_stalled") {
     return {
       state: "warn",
-      title: "解码停帧",
+      title: "画面卡顿",
       detail: input.state.videoFlow.detail,
       metrics,
     };
@@ -531,7 +531,7 @@ export function getRemoteConnectionQuality(input: {
   if (input.state.videoFlow?.status === "receiving") {
     return {
       state: "good",
-      title: "链路正常",
+      title: "连接正常",
       detail: formatConnectionQualityDetail(input),
       metrics,
     };

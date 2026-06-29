@@ -1014,10 +1014,10 @@ export function useRemoteControlController() {
       decodeStalledPersisted);
   const remoteRecoveryLabel = browserConnectionRecoverable
     ? controlChannelState === "closed"
-      ? "控制通道已断开"
+      ? "控制连接已断开"
       : decodeStalledPersisted
-        ? "画面解码停滞"
-        : "视频链路已停滞"
+        ? "画面卡顿（解码异常）"
+        : "画面中断（网络）"
     : "";
   const autoReconnectLabel = browserConnectionRecoverable && autoReconnectEnabled
     ? autoReconnectStatus || "自动重连准备中"
