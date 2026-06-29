@@ -164,6 +164,8 @@ export function useRemoteControlController() {
   const remoteStageFrameRef = useRef<HTMLDivElement | null>(null);
   const autoConnectAttemptedDeviceRef = useRef<string>("");
   const controlChannelOpenedRef = useRef(false);
+  // 记录哪些物理键(event.code)是以 text_input 方式发出的，keyup 时不再补发 kbd 抬起，避免按下/抬起不配对。
+  const textInputKeysRef = useRef(new Set<string>());
   const activePointerId = useRef<number | null>(null);
   const navigate = useNavigate();
   const controlRouteMatch = useMatch("/devices/:deviceId/control");
@@ -605,9 +607,7 @@ export function useRemoteControlController() {
       streamerData: buildStreamerControlStreamerDataJson({ controlId: appControlId }),
       forceRelay: options.forceRelay ?? (connectionRouteMode === "relay" ? true : undefined),
       gzipSdp: sdpTransportMode === "gzip",
-      targetPlatform: roomJoinContext?.kind === "remote_assistance"
-        ? roomJoinContext.targetPlatform
-        : selectedDevice?.platform,
+      targetPlatform: resolveTargetPlatform(),
     });
     setBrowserRemoteState(state);
     await applyLatestSignalEvents(session);
@@ -867,14 +867,31 @@ export function useRemoteControlController() {
     }
   }
 
+  function resolveTargetPlatform(): number | undefined {
+    return roomJoinContext?.kind === "remote_assistance" ? roomJoinContext.targetPlatform : selectedDevice?.platform;
+  }
+
+  // Windows 被控端打字走 text_input(单字符直接上屏):规避被控端对“按住未抬起”的软件级自动重复
+  // (网络延迟会把按下→抬起拉长，导致字母连发)。仅对“可打印单字符且不带 Ctrl/Alt/Meta”生效；
+  // 快捷键、功能键、控制键仍走 kbd 路径(用 VK 键码)。
+  function shouldSendKeyAsText(event: KeyboardEvent<HTMLDivElement>): boolean {
+    return resolveTargetPlatform() === 1 && event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey;
+  }
+
   function handleRemoteStageKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!inputControlActive || !browserRemoteSession.current || event.repeat) return;
+    // event.repeat:跳过浏览器自动重复；isComposing:IME 合成中不把候选键当普通按键。
+    if (!inputControlActive || !browserRemoteSession.current || event.repeat || event.nativeEvent.isComposing) return;
     // Ctrl/Cmd+V 走“把本机剪贴板粘到远端”（onPaste 处理），不把 V 当普通按键发给远端，
     // 否则远端会再粘一次它自己的剪贴板。
     if ((event.ctrlKey || event.metaKey) && (event.key === "v" || event.key === "V")) return;
     event.preventDefault();
     try {
-      browserRemoteSession.current.sendKeyboardInput({ action: "keyboardPress", value: toRemoteKeyValue(event) });
+      if (shouldSendKeyAsText(event)) {
+        textInputKeysRef.current.add(event.code);
+        browserRemoteSession.current.sendTextInput(event.key);
+      } else {
+        browserRemoteSession.current.sendKeyboardInput({ action: "keyboardPress", value: toRemoteKeyValue(event) });
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -884,6 +901,8 @@ export function useRemoteControlController() {
     if (!inputControlActive || !browserRemoteSession.current) return;
     if ((event.ctrlKey || event.metaKey) && (event.key === "v" || event.key === "V")) return;
     event.preventDefault();
+    // 以 text_input 发出的字符没有“抬起”语义；按物理键(event.code)配对跳过，避免发出未配对的 kbd 抬起。
+    if (textInputKeysRef.current.delete(event.code)) return;
     try {
       browserRemoteSession.current.sendKeyboardInput({ action: "keyboardRelease", value: toRemoteKeyValue(event) });
     } catch (caught) {
@@ -895,6 +914,7 @@ export function useRemoteControlController() {
     // 失焦时把按住的键鼠全部抬起：Alt+Tab、右键菜单、系统快捷键会吞掉 keyup/pointerup，
     // 否则会在被控端留下卡住的按键（右键卡死、Alt 卡死等）。
     activePointerId.current = null;
+    textInputKeysRef.current.clear();
     browserRemoteSession.current?.releaseAllInputs();
   }
 

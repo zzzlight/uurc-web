@@ -53,6 +53,7 @@ import {
   buildStreamerMacMouseMoveAbsoluteInputMessage,
   buildStreamerMacMouseScrollInputMessage,
   buildStreamerWindowsKeyboardInputMessage,
+  buildStreamerTextInputMessage,
   buildStreamerMouseButtonInputMessage,
   buildStreamerMouseMoveAbsoluteInputMessage,
   buildStreamerMouseScrollInputMessage,
@@ -1204,6 +1205,12 @@ describe("streamer protocol constants", () => {
     );
     // 未命中(非数字/未映射)返回空串，由发送层静默跳过。
     expect(buildStreamerWindowsKeyboardInputMessage({ action: "keyboardPress", value: "A" })).toBe("");
+  });
+
+  it("builds desktop text_input messages for typed characters", () => {
+    expect(buildStreamerTextInputMessage("o")).toBe('{"action":"text_input","content":"o"}');
+    expect(buildStreamerTextInputMessage("ABC ")).toBe('{"action":"text_input","content":"ABC "}');
+    expect(buildStreamerTextInputMessage("你看")).toBe('{"action":"text_input","content":"你看"}');
   });
 
   it("builds recovered MuMu touch input messages with stable control slots", () => {

@@ -5,6 +5,7 @@ import {
   buildStreamerKeyboardInputMessage,
   buildStreamerMacKeyboardInputMessage,
   buildStreamerWindowsKeyboardInputMessage,
+  buildStreamerTextInputMessage,
   buildStreamerMacMouseMoveAbsoluteInputMessage,
   buildStreamerMacMouseScrollInputMessage,
   buildStreamerMouseMoveAbsoluteInputMessage,
@@ -482,6 +483,13 @@ export class BrowserRemoteSession {
     if (input.action === "keyboardPress") this.heldKeyboardValues.add(input.value);
     else if (input.action === "keyboardRelease") this.heldKeyboardValues.delete(input.value);
     this.sendInputData(this.buildKeyboardInput(input));
+  }
+
+  // 直接上屏一段字符(text_input)。桌面被控端打字用它替代逐键 kbd_press，避免字母连发；
+  // 走与其他控制输入相同的 sendInputData 通道(桌面为裸 JSON)。
+  sendTextInput(content: string): void {
+    if (!content) return;
+    this.sendInputData(buildStreamerTextInputMessage(content));
   }
 
   releaseAllInputs(): void {

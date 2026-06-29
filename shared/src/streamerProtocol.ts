@@ -1686,6 +1686,13 @@ export function transformStreamerAndroidKeyCodeToMac(value: string | number): nu
   return STREAMER_ANDROID_TO_MAC_KEY_CODES[Math.trunc(value)];
 }
 
+// 桌面被控端打字走独立的 text_input(单次上屏的字符内容），而非逐键 kbd_press。
+// 这样可避免被控端对"按住未抬起"的软件级自动重复(网络延迟会把按下→抬起拉长，导致字母连发),
+// 也是中文/IME 文本的承载方式。真机抓包:{"action":"text_input","content":"abc"}。
+export function buildStreamerTextInputMessage(content: string): string {
+  return JSON.stringify({ action: "text_input", content });
+}
+
 export function buildStreamerWindowsKeyboardInputMessage(input: BuildStreamerKeyboardInputMessageInput): string {
   const key = transformStreamerAndroidKeyCodeToWindows(input.value);
   if (key === undefined) return "";

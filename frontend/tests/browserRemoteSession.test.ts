@@ -17,6 +17,7 @@ import {
   buildStreamerMacMouseMoveAbsoluteInputMessage,
   buildStreamerMacMouseScrollInputMessage,
   buildStreamerWindowsKeyboardInputMessage,
+  buildStreamerTextInputMessage,
   buildStreamerMouseMoveAbsoluteInputMessage,
   buildStreamerMouseScrollInputMessage,
   encodeStreamerEchoResponseMessage,
@@ -1072,9 +1073,11 @@ describe("BrowserRemoteSession", () => {
 
     session.sendMouseMove({ absX: 384, absY: 1037, surfaceWidth: 1920, surfaceHeight: 1080 });
     session.sendKeyboardInput({ action: "keyboardPress", value: 113 });
+    session.sendTextInput("o");
     session.sendMouseScroll({ deltaX: 0, deltaY: -120 });
 
-    // Windows 是桌面被控端:与 Mac 一样走「裸 JSON(非 protobuf)+ 归一化坐标」，键码换成 Windows VK。
+    // Windows 是桌面被控端:与 Mac 一样走「裸 JSON(非 protobuf)+ 归一化坐标」，键码换成 Windows VK；
+    // 打字走 text_input(单字符上屏)。
     expect(peer.channels.get(STREAMER_DATA_CHANNEL_LABELS.control)?.sent).toEqual([
       buildStreamerMacMouseMoveAbsoluteInputMessage({
         absX: 384,
@@ -1083,6 +1086,7 @@ describe("BrowserRemoteSession", () => {
         surfaceHeight: 1080,
       }),
       buildStreamerWindowsKeyboardInputMessage({ action: "keyboardPress", value: 113 }),
+      buildStreamerTextInputMessage("o"),
       buildStreamerMacMouseScrollInputMessage({ deltaX: 0, deltaY: -120 }),
     ]);
   });
