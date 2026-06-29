@@ -22,7 +22,10 @@ export function RemoteControlPage(props: RemoteControlPageProps) {
       ) : null}
 
       <section className="control-stage-layout">
-        <div className="control-stage-frame" ref={props.remoteStageFrameRef}>
+        <div
+          className={`control-stage-frame${props.isFullscreen ? " control-stage-frame--fullscreen" : ""}`}
+          ref={props.remoteStageFrameRef}
+        >
           <RemoteCommandBar {...props} />
           <RemoteControlStage {...props} />
         </div>

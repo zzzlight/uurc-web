@@ -1,35 +1,26 @@
 .control-command-bar {
-  position: absolute;
-  top: 12px;
-  left: 50%;
+  /* 默认是画面上方的常驻工具栏（不再悬浮遮挡画面、也不再半透明，主操作清晰可见）；
+     拖动后由 useDraggableFloatingPanel 切到 position:fixed 浮动到窗口任意位置。 */
+  position: relative;
   z-index: 3;
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
   width: max-content;
-  max-width: calc(100% - 24px);
+  max-width: 100%;
   gap: 4px;
+  margin-bottom: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius);
-  background: rgba(24, 24, 27, 0.9);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  background: rgba(24, 24, 27, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
   color: #ffffff;
   padding: 6px;
-  transform: translateX(-50%);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   overflow: visible;
   touch-action: none;
-  opacity: 0.34;
-  transition: opacity 0.18s ease;
-}
-
-/* 空闲时半透明，避免长期遮挡画面；hover/聚焦或出现连接告警时恢复完全可见。仍可拖动到任意位置。 */
-.control-command-bar:hover,
-.control-command-bar:focus-within,
-.control-command-bar:has(.connection-recovery-strip) {
-  opacity: 1;
 }
 
 .command-action-group {

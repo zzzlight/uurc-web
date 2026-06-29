@@ -40,13 +40,12 @@
   }
 
   .control-command-bar {
-    left: 12px;
-    width: calc(100% - 24px);
+    width: 100%;
     max-width: none;
+    flex-wrap: nowrap;
     justify-content: flex-start;
     overflow-x: auto;
     overflow-y: visible;
-    transform: none;
     scrollbar-width: none;
   }
 

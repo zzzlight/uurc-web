@@ -1,4 +1,4 @@
-import { TerminalSquare } from "lucide-react";
+import { Github, TerminalSquare } from "lucide-react";
 
 import { LoginForm } from "./LoginForm.js";
 import { LoginImportPanel } from "./LoginImportPanel.js";
@@ -87,6 +87,13 @@ export function LoginPage({
           />
         </div>
       </section>
+
+      <footer className="app-footer">
+        <a className="repo-link" href="https://github.com/iola1999/uurc-web" target="_blank" rel="noreferrer">
+          <Github size={14} />
+          开源于 GitHub · iola1999/uurc-web · 欢迎 Star
+        </a>
+      </footer>
     </main>
   );
 }

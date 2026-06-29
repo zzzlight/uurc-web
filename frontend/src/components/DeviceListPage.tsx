@@ -1,4 +1,4 @@
-import { TerminalSquare } from "lucide-react";
+import { Github, TerminalSquare } from "lucide-react";
 
 import type { AuthStatus, UuDeviceGroups } from "@uurc/shared/types";
 
@@ -59,6 +59,16 @@ export function DeviceListPage({
           <span className="wordmark">UU Remote<span className="wordmark-sub">Web</span></span>
           <h1>我的设备</h1>
         </div>
+        <a
+          className="repo-link"
+          href="https://github.com/iola1999/uurc-web"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="在 GitHub 查看源码"
+        >
+          <Github size={16} />
+          GitHub
+        </a>
       </header>
 
       {error ? (
