@@ -846,8 +846,11 @@ describe("App console", () => {
     expect(controlSegment).toHaveAttribute("aria-pressed", "true");
     expect(document.activeElement).toHaveAttribute("aria-label", "远控画面");
 
+    // 忠实按键:普通键在 keydown 即同步发「按下+抬起」一对(瞬时一击)，不在被控端留下“按住”状态。
+    const controlSentBefore = TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length ?? 0;
     await user.keyboard("a");
-    expect(TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length).toBeGreaterThan(0);
+    const controlSentAfter = TestPeerConnection.sentByLabel.CONTROL_DATA_CHANNEL?.length ?? 0;
+    expect(controlSentAfter - controlSentBefore).toBeGreaterThanOrEqual(2);
 
     // 点“仅查看”暂停操作，开关切回仅查看态。
     await user.click(screen.getByRole("button", { name: "仅查看" }));

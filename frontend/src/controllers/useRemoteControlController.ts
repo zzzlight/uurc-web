@@ -93,6 +93,9 @@ import { useAutoLoadDevices } from "./useAutoLoadDevices.js";
 
 const REMOTE_ASSISTANCE_DEFAULT_TARGET_PLATFORM = 1;
 
+// 需要“按住保持”的修饰键(用于组合键);其余键采用瞬时一击。event.key 取值见 KeyboardEvent.key 规范。
+const HOLD_MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "AltGraph"]);
+
 function readAutoConnectPref(): boolean {
   try {
     return globalThis.localStorage?.getItem("uurc.autoConnect") !== "false";
@@ -164,8 +167,6 @@ export function useRemoteControlController() {
   const remoteStageFrameRef = useRef<HTMLDivElement | null>(null);
   const autoConnectAttemptedDeviceRef = useRef<string>("");
   const controlChannelOpenedRef = useRef(false);
-  // 记录哪些物理键(event.code)是以 text_input 方式发出的，keyup 时不再补发 kbd 抬起，避免按下/抬起不配对。
-  const textInputKeysRef = useRef(new Set<string>());
   const activePointerId = useRef<number | null>(null);
   const navigate = useNavigate();
   const controlRouteMatch = useMatch("/devices/:deviceId/control");
@@ -871,26 +872,26 @@ export function useRemoteControlController() {
     return roomJoinContext?.kind === "remote_assistance" ? roomJoinContext.targetPlatform : selectedDevice?.platform;
   }
 
-  // Windows 被控端打字走 text_input(单字符直接上屏):规避被控端对“按住未抬起”的软件级自动重复
-  // (网络延迟会把按下→抬起拉长，导致字母连发)。仅对“可打印单字符且不带 Ctrl/Alt/Meta”生效；
-  // 快捷键、功能键、控制键仍走 kbd 路径(用 VK 键码)。
-  function shouldSendKeyAsText(event: KeyboardEvent<HTMLDivElement>): boolean {
-    return resolveTargetPlatform() === 1 && event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey;
-  }
-
+  // 忠实转发物理按键(由远端的键盘布局/输入法解释，符合 RDP/VNC/Parsec 等桌面远控惯例):
+  // - 修饰键(Ctrl/Alt/Shift/Meta)按下保持、抬起释放，以支持组合键;
+  // - 其余键在 keydown 时立即「按下+抬起」一次(瞬时一击)，不在被控端留下“按住”状态——
+  //   避免 UU 被控端对长按做的软件级自动重复被网络抖动放大成连发;
+  // - 长按重复改由浏览器本机自动重复(event.repeat 的 keydown)按本机速率驱动，
+  //   与 VNC RFB “自动重复在客户端侧处理”的设计一致。
   function handleRemoteStageKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    // event.repeat:跳过浏览器自动重复；isComposing:IME 合成中不把候选键当普通按键。
-    if (!inputControlActive || !browserRemoteSession.current || event.repeat || event.nativeEvent.isComposing) return;
+    // isComposing:本机输入法合成中不把候选键当普通按键(中文请用远端输入法或剪贴板粘贴)。
+    if (!inputControlActive || !browserRemoteSession.current || event.nativeEvent.isComposing) return;
     // Ctrl/Cmd+V 走“把本机剪贴板粘到远端”（onPaste 处理），不把 V 当普通按键发给远端，
     // 否则远端会再粘一次它自己的剪贴板。
     if ((event.ctrlKey || event.metaKey) && (event.key === "v" || event.key === "V")) return;
+    const isHoldModifier = HOLD_MODIFIER_KEYS.has(event.key);
+    if (isHoldModifier && event.repeat) return; // 修饰键已按住，忽略本机自动重复
     event.preventDefault();
+    const value = toRemoteKeyValue(event);
     try {
-      if (shouldSendKeyAsText(event)) {
-        textInputKeysRef.current.add(event.code);
-        browserRemoteSession.current.sendTextInput(event.key);
-      } else {
-        browserRemoteSession.current.sendKeyboardInput({ action: "keyboardPress", value: toRemoteKeyValue(event) });
+      browserRemoteSession.current.sendKeyboardInput({ action: "keyboardPress", value });
+      if (!isHoldModifier) {
+        browserRemoteSession.current.sendKeyboardInput({ action: "keyboardRelease", value });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -900,9 +901,9 @@ export function useRemoteControlController() {
   function handleRemoteStageKeyUp(event: KeyboardEvent<HTMLDivElement>) {
     if (!inputControlActive || !browserRemoteSession.current) return;
     if ((event.ctrlKey || event.metaKey) && (event.key === "v" || event.key === "V")) return;
+    // 只有修饰键是“按住”的，需在抬起时释放;普通键已在 keydown 即时抬起。
+    if (!HOLD_MODIFIER_KEYS.has(event.key)) return;
     event.preventDefault();
-    // 以 text_input 发出的字符没有“抬起”语义；按物理键(event.code)配对跳过，避免发出未配对的 kbd 抬起。
-    if (textInputKeysRef.current.delete(event.code)) return;
     try {
       browserRemoteSession.current.sendKeyboardInput({ action: "keyboardRelease", value: toRemoteKeyValue(event) });
     } catch (caught) {
@@ -914,7 +915,6 @@ export function useRemoteControlController() {
     // 失焦时把按住的键鼠全部抬起：Alt+Tab、右键菜单、系统快捷键会吞掉 keyup/pointerup，
     // 否则会在被控端留下卡住的按键（右键卡死、Alt 卡死等）。
     activePointerId.current = null;
-    textInputKeysRef.current.clear();
     browserRemoteSession.current?.releaseAllInputs();
   }
 
