@@ -27,6 +27,7 @@ export function DeviceListPage({
   onAssistanceTargetPlatformChange,
   onStartRemoteAssistance,
   onExport,
+  onCopyAuthJson,
   onLogout,
 }: {
   authStatus: AuthStatus | null;
@@ -50,6 +51,7 @@ export function DeviceListPage({
   onAssistanceTargetPlatformChange: (value: number) => void;
   onStartRemoteAssistance: () => void;
   onExport: () => void;
+  onCopyAuthJson: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -106,6 +108,7 @@ export function DeviceListPage({
             identityDeviceLabel={identityDeviceLabel}
             identitySourceLabel={identitySourceLabel}
             onExport={onExport}
+            onCopyAuthJson={onCopyAuthJson}
             onLogout={onLogout}
           />
         </aside>

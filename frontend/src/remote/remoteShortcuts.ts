@@ -74,6 +74,22 @@ export const REMOTE_SHORTCUT_GROUPS: RemoteShortcutGroup[] = [
   },
 ];
 
+// 被控端平台 → 优先展示的快捷键分组标题；未知平台不调整顺序。
+export function remoteShortcutGroupTitleForPlatform(platform: number | undefined): string {
+  if (platform === 1) return "Windows";
+  if (platform === 4) return "Mac";
+  return "";
+}
+
+// 把与被控系统匹配的分组置顶，其余分组保持原相对顺序（“通用”始终在末尾）。
+export function orderRemoteShortcutGroups(preferredTitle: string): RemoteShortcutGroup[] {
+  if (!preferredTitle) return REMOTE_SHORTCUT_GROUPS;
+  const preferred = REMOTE_SHORTCUT_GROUPS.filter((group) => group.title === preferredTitle);
+  if (preferred.length === 0) return REMOTE_SHORTCUT_GROUPS;
+  const rest = REMOTE_SHORTCUT_GROUPS.filter((group) => group.title !== preferredTitle);
+  return [...preferred, ...rest];
+}
+
 const SHORTCUTS_BY_ID = new Map(
   REMOTE_SHORTCUT_GROUPS.flatMap((group) => group.shortcuts.map((shortcut) => [shortcut.id, shortcut] as const)),
 );

@@ -20,6 +20,7 @@ import type {
   NextAction,
   RemoteConnectionQuality,
   RemoteStageViewMode,
+  RemoteVideoSourceInfo,
   RemoteVideoStream,
   SdpTransportMode,
 } from "./remoteControlTypes.js";
@@ -48,6 +49,7 @@ export interface RemoteControlPageProps {
   controlChannelLabel: string;
   controlChannelState: RTCDataChannelState;
   debugEvents: BrowserRemoteSessionState["debugEvents"];
+  deviceNotFound: boolean;
   effectiveConnectionRouteLabel: string;
   error: string;
   forceJoin: boolean;
@@ -60,15 +62,21 @@ export interface RemoteControlPageProps {
   networkSwitchSummary: string;
   nextAction: NextAction;
   normalJoinTakeoverHint: string;
+  occupiedBySelfClient: boolean;
+  occupyingParticipantLabel: string;
+  primaryRemoteVideoActive: boolean;
   primaryRemoteVideoId: string;
   remoteBootstrap: RemoteControlBootstrap | null;
   remoteRecoveryLabel: string;
+  remoteShortcutPlatform: string;
   remoteStageRef: RefObject<HTMLDivElement | null>;
   remoteStageFrameRef: RefObject<HTMLDivElement | null>;
   isFullscreen: boolean;
   remoteStageViewMode: RemoteStageViewMode;
   remoteVideoCount: number;
+  remoteVideoSources: RemoteVideoSourceInfo[];
   remoteVideoStreams: RemoteVideoStream[];
+  stageStatusLabel: string;
   roomDebugPayload: unknown;
   roomJoinFailureMessage: string;
   roomJoinFailureTakeoverHint: string;

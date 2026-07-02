@@ -1,9 +1,18 @@
-import { Download, KeyRound, LoaderCircle, LogOut } from "lucide-react";
+import { Copy, Download, KeyRound, LoaderCircle, LogOut } from "lucide-react";
 
 import type { AuthStatus } from "@uurc/shared/types";
 
 import { Panel, StatusRow } from "./Panel.js";
 import { StatusPill } from "./StatusPill.js";
+
+// Token 到期：JWT 无 exp 声明时显示“长期有效”，有则本地化为可读时间并标注是否过期。
+function formatTokenExpiry(authStatus: AuthStatus | null): string {
+  if (!authStatus?.tokenExpiresAt) return "长期有效（无到期声明）";
+  const date = new Date(authStatus.tokenExpiresAt);
+  if (Number.isNaN(date.getTime())) return authStatus.tokenExpiresAt;
+  const formatted = date.toLocaleString();
+  return authStatus.tokenExpired ? `${formatted}（已过期）` : formatted;
+}
 
 export function DeviceAccountPanel({
   authJson,
@@ -12,6 +21,7 @@ export function DeviceAccountPanel({
   identityDeviceLabel,
   identitySourceLabel,
   onExport,
+  onCopyAuthJson,
   onLogout,
 }: {
   authJson: string;
@@ -20,6 +30,7 @@ export function DeviceAccountPanel({
   identityDeviceLabel: string;
   identitySourceLabel: string;
   onExport: () => void;
+  onCopyAuthJson: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -56,12 +67,19 @@ export function DeviceAccountPanel({
       </div>
 
       {authJson.trim() ? (
-        <details className="identity-details export-details">
+        <details className="identity-details export-details" open>
           <summary>登录态备份</summary>
-          <label className="field-label" htmlFor="auth-json-export">
-            登录态 JSON
-          </label>
+          <div className="export-details-head">
+            <label className="field-label" htmlFor="auth-json-export">
+              登录态 JSON
+            </label>
+            <button type="button" className="link-button" onClick={onCopyAuthJson}>
+              <Copy size={14} />
+              复制
+            </button>
+          </div>
           <textarea id="auth-json-export" name="auth-json-export" value={authJson} readOnly spellCheck={false} />
+          <p className="field-hint">妥善保管：任何人拿到它即可登录你的账号。可在其他设备的「导入登录态」中粘贴恢复。</p>
         </details>
       ) : null}
 
@@ -72,7 +90,7 @@ export function DeviceAccountPanel({
           <StatusRow label="客户端" value={authStatus?.clientId ?? "-"} />
           <StatusRow label="网页设备" value={authStatus?.deviceId ?? "-"} />
           <StatusRow label="渠道" value={authStatus?.channel ?? "-"} />
-          <StatusRow label="Token 到期" value={authStatus?.tokenExpiresAt ?? "-"} />
+          <StatusRow label="Token 到期" value={formatTokenExpiry(authStatus)} />
         </div>
       </details>
     </Panel>

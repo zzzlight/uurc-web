@@ -5,9 +5,9 @@ import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 export function RemoteVideoSourcePanel({
   onRemoteVideoSourceChange,
   primaryRemoteVideoId,
-  remoteVideoStreams,
-}: Pick<RemoteControlPageProps, "onRemoteVideoSourceChange" | "primaryRemoteVideoId" | "remoteVideoStreams">) {
-  const hasSources = remoteVideoStreams.length > 0;
+  remoteVideoSources,
+}: Pick<RemoteControlPageProps, "onRemoteVideoSourceChange" | "primaryRemoteVideoId" | "remoteVideoSources">) {
+  const hasSources = remoteVideoSources.length > 0;
 
   return (
     <section className="control-insight-panel" aria-label="画面源">
@@ -16,19 +16,21 @@ export function RemoteVideoSourcePanel({
           <Monitor size={17} />
           <h2>画面源</h2>
         </div>
-        <span>{hasSources ? `${remoteVideoStreams.length} 路` : "等待画面"}</span>
+        <span>{hasSources ? `${remoteVideoSources.length} 路` : "等待画面"}</span>
       </header>
       <p>{hasSources ? "选择要显示的画面" : "连接后显示可用画面"}</p>
       <div className="video-source-list">
         {hasSources ? (
-          remoteVideoStreams.map((video, index) => (
+          remoteVideoSources.map((source) => (
             <button
               type="button"
-              key={video.id}
-              aria-pressed={video.id === primaryRemoteVideoId}
-              onClick={() => onRemoteVideoSourceChange(video.id)}
+              key={source.id}
+              className={source.hasSignal ? undefined : "video-source-empty"}
+              aria-pressed={source.id === primaryRemoteVideoId}
+              onClick={() => onRemoteVideoSourceChange(source.id)}
             >
-              画面 {index + 1}
+              <span>画面 {source.index + 1}</span>
+              <small>{source.hasSignal ? source.resolution || "画面中" : "无信号"}</small>
             </button>
           ))
         ) : (

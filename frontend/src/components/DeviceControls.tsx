@@ -33,13 +33,14 @@ export function DeviceSection({
               canConnect ? "device-item-action" : "device-item-static",
               device.deviceId === selected ? "selected" : "",
             ].filter(Boolean).join(" ");
+            const controlLabel = getDeviceControlLabel(device);
             const content = (
               <>
                 <span className="device-name">{device.alias}</span>
                 <span className="device-item-meta">
                   <small>{getDeviceConnectionLabel(device)}</small>
-                  <small>{getDeviceControlLabel(device)}</small>
-                  {device.deviceId === currentDeviceId ? <small>当前登录态</small> : null}
+                  {controlLabel ? <small>{controlLabel}</small> : null}
+                  {device.deviceId === currentDeviceId ? <small>本次登录设备</small> : null}
                 </span>
                 {canConnect ? (
                   <span className="device-connect-link">

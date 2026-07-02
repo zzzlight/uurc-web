@@ -1,13 +1,30 @@
 import type { UuDevice } from "@uurc/shared/types";
 
-export function getDeviceConnectionLabel(device: UuDevice): string {
-  if (device.status === "CONNECTED") return "已连接";
-  if (device.status) return device.status;
-  return device.controllable ? "在线" : "待机";
+// 把 UU 返回的英文/大写连接状态映射成中文；未知状态原样兜底。
+const CONNECTION_STATUS_LABELS: Record<string, string> = {
+  CONNECTED: "已连接",
+  DISCONNECTED: "离线",
+  ONLINE: "在线",
+  OFFLINE: "离线",
+  SLEEP: "休眠",
+  STANDBY: "待机",
+};
+
+export function isDeviceOnline(device: UuDevice): boolean {
+  return device.status ? device.status.toUpperCase() === "CONNECTED" : device.controllable;
 }
 
+export function getDeviceConnectionLabel(device: UuDevice): string {
+  if (!device.status) return device.controllable ? "在线" : "离线";
+  return CONNECTION_STATUS_LABELS[device.status.toUpperCase()] ?? device.status;
+}
+
+// 控制能力标签：仅在“在线但不可控/被占用”时才有额外信息；离线设备返回空串，
+// 由调用方省略，避免和“离线”标签语义重叠（离线即不可控，无需再说一遍）。
 export function getDeviceControlLabel(device: UuDevice): string {
-  return (device.participantsInfo?.length ?? 0) > 0 ? "已有控制端" : device.controllable ? "可控制" : "不可控制";
+  if ((device.participantsInfo?.length ?? 0) > 0) return "已有控制端";
+  if (!isDeviceOnline(device)) return "";
+  return device.controllable ? "可控制" : "不可控制";
 }
 
 export function formatAppFlagControlMode(appFlag: unknown): string {

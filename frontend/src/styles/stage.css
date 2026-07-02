@@ -114,6 +114,19 @@
   font-size: 12.5px;
 }
 
+/* 切到无信号画面源时，盖在黑屏之上说明“这一路当前无内容”，避免用户误以为卡死。 */
+.stage-center--overlay {
+  z-index: 2;
+  padding: 16px;
+  background: rgba(5, 5, 5, 0.72);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.stage-center--overlay span {
+  max-width: min(360px, 84%);
+}
+
 .response-box {
   min-height: 160px;
   max-height: 320px;

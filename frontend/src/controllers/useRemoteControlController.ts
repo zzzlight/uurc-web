@@ -26,6 +26,7 @@ import type {
   ConnectionRouteMode,
   RemoteStageViewMode,
   RemoteVideoSamplesById,
+  RemoteVideoSourceInfo,
   RemoteVideoStream,
   RoomJoinContext,
   SdpTransportMode,
@@ -57,9 +58,10 @@ import {
 } from "../api/client.js";
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 import { readLocalClipboardText } from "../browser/clipboard.js";
+import { formatParticipantMeta } from "../devices/deviceLabels.js";
 import { pickControllableDesktop } from "../devices/deviceSummary.js";
 import { BrowserRemoteSession, type BrowserRemoteSessionState, type BrowserRemoteVideoElementSample } from "../remote/browserRemoteSession.js";
-import { sendRemoteShortcut, type RemoteShortcut } from "../remote/remoteShortcuts.js";
+import { remoteShortcutGroupTitleForPlatform, sendRemoteShortcut, type RemoteShortcut } from "../remote/remoteShortcuts.js";
 import {
   createAppControlId,
   createIdleBrowserRemoteState,
@@ -107,6 +109,8 @@ function readAutoConnectPref(): boolean {
 // 把底层/协议级英文错误映射成用户能看懂、带“怎么办”的中文；未知错误原样返回。
 function toFriendlyError(message: string): string {
   const text = message || "";
+  if (/Unexpected token|not valid JSON|Unexpected end of JSON|JSON at position/i.test(text)) return "登录态 JSON 格式不正确，请检查是否完整复制。";
+  if (/Join a room before starting remote control|请先加入房间/i.test(text)) return "请先加入设备房间再开始远控。";
   if (/ack timed out|timed out|timeout/i.test(text)) return "连接超时，请稍后重试。";
   if (/signal control ack failed/i.test(text)) return "对端拒绝了本次连接，请稍后重试或更换网络。";
   if (/did not include a ControlResult/i.test(text)) return "未收到对端的连接许可，请重试。";
@@ -114,6 +118,15 @@ function toFriendlyError(message: string): string {
   if (/Failed to fetch|NetworkError|ERR_NETWORK|network error/i.test(text)) return "网络异常，请检查网络后重试。";
   if (/Missing required login state/i.test(text)) return "登录态不完整，请重新登录。";
   return text;
+}
+
+// 手机号前端预校验：中国大陆区号要求 11 位、以 1 开头；其他区号只做非空+纯数字的宽松校验。
+function isValidMobileNumber(regionCode: string, mobile: string): boolean {
+  const digits = mobile.trim();
+  if (!/^\d+$/.test(digits)) return false;
+  const region = regionCode.trim() || "86";
+  if (region === "86") return /^1\d{10}$/.test(digits);
+  return digits.length >= 5 && digits.length <= 15;
 }
 
 export function useRemoteControlController() {
@@ -193,6 +206,25 @@ export function useRemoteControlController() {
   const signalReadiness = remoteSignalDiagnostics ?? localSignalReadiness;
   const selectedParticipants = selectedDevice?.participantsInfo ?? [];
   const selectedDeviceOccupied = selectedParticipants.length > 0;
+  // 用 participant.clientId 与当前网页控制端的 clientId 比对，区分“占用者是不是自己上一个会话”。
+  // 仅当占用者全部是自己时才自动接管；任一占用者是他人则保留显式接管步骤（避免误踢真实控制端）。
+  const currentClientId = authStatus?.clientId ?? "";
+  const occupiedBySelfClient =
+    selectedParticipants.length > 0 &&
+    currentClientId.length > 0 &&
+    selectedParticipants.every((participant) => participant.clientId === currentClientId);
+  const occupiedByOthers = selectedParticipants.some(
+    (participant) => !participant.clientId || participant.clientId !== currentClientId,
+  );
+  const occupyingParticipant =
+    selectedParticipants.find((participant) => !participant.clientId || participant.clientId !== currentClientId) ??
+    selectedParticipants[0] ??
+    null;
+  const occupyingParticipantLabel = occupyingParticipant
+    ? occupyingParticipant.alias
+      ? `${occupyingParticipant.alias}（${formatParticipantMeta(occupyingParticipant)}）`
+      : formatParticipantMeta(occupyingParticipant) || "其他控制端"
+    : "其他控制端";
   const primaryRemoteVideoId = useMemo(
     () => resolvePrimaryRemoteVideoId(remoteVideoStreams, remoteVideoSamplesById, selectedRemoteVideoId),
     [remoteVideoSamplesById, remoteVideoStreams, selectedRemoteVideoId],
@@ -313,6 +345,21 @@ export function useRemoteControlController() {
     });
   }
 
+  async function handleCopyAuthJson() {
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+    if (!authJson.trim()) return;
+    if (!clipboard?.writeText) {
+      showToast("当前环境不支持自动复制，请手动选择文本复制");
+      return;
+    }
+    try {
+      await clipboard.writeText(authJson);
+      showToast("已复制登录态到剪贴板");
+    } catch {
+      showToast("复制失败，请手动选择文本复制");
+    }
+  }
+
   async function handleLogout() {
     if (typeof window !== "undefined" && !window.confirm("退出后需重新登录。若未导出登录态备份，建议先导出。确定退出？")) {
       return;
@@ -351,6 +398,9 @@ export function useRemoteControlController() {
 
   async function handleSendMobileCode() {
     await run("send-mobile-code", async () => {
+      if (!isValidMobileNumber(regionCode, mobile)) {
+        throw new Error(regionCode.trim() === "86" || !regionCode.trim() ? "请输入 11 位有效手机号。" : "请输入有效的手机号。");
+      }
       await ensureMobileDevice();
       const result = await sendMobileCode({ regionCode: regionCode.trim() || "86", mobile });
       setAuthStatus(result.status);
@@ -493,7 +543,9 @@ export function useRemoteControlController() {
       setAssistanceNotice("");
       resetBrowserRemoteSession();
       setRemoteBootstrap(joined.roomConfigSummary ? await getRemoteBootstrap() : null);
-      nextContext = context;
+      // 房间加入失败（无房间配置）时不返回上下文：让 handleNextAction 就此停下，
+      // 由 roomJoinFailureMessage 展示友好中文提示，避免后续信令启动抛出英文异常。
+      if (joined.roomConfigSummary) nextContext = context;
     });
     return nextContext;
   }
@@ -558,7 +610,9 @@ export function useRemoteControlController() {
 
   async function handleReturnToDevices() {
     if (busy !== null) return;
-    const hasActiveSession = canDisconnectRemote || Boolean(roomJoinContext?.deviceId);
+    // 仅在确有可断开的活动连接时才二次确认；已手动断开（canDisconnectRemote 为 false）后直接返回，
+    // 不再因残留的 roomJoinContext 误弹“将断开远控”确认框。
+    const hasActiveSession = canDisconnectRemote;
     if (hasActiveSession) {
       const message =
         roomJoinContext?.kind === "remote_assistance"
@@ -666,7 +720,9 @@ export function useRemoteControlController() {
       return;
     }
     if (!roomJoinedForSelectedDevice || roomRequiresTakeover || signalGatewayState === "error") {
-      const nextContext = await joinRoomForDevice(selectedDeviceId, roomRequiresTakeover ? true : forceJoin);
+      // 自己上一个会话占用时直接接管（force），无需用户再点一次；他人占用仍保留显式两步。
+      const joinWithForce = roomRequiresTakeover || occupiedBySelfClient ? true : forceJoin;
+      const nextContext = await joinRoomForDevice(selectedDeviceId, joinWithForce);
       if (!nextContext || (nextContext.occupiedAtJoin && !nextContext.forceJoin)) return;
       const status = await handleStartSignalGateway(nextContext);
       if (status?.status === "connected" && typeof RTCPeerConnection !== "undefined") {
@@ -1163,6 +1219,7 @@ export function useRemoteControlController() {
     }
   }, [autoConnect]);
 
+  const remoteAssistanceActive = roomJoinContext?.kind === "remote_assistance";
   useEffect(() => {
     if (!controlRouteMatch) {
       autoConnectAttemptedDeviceRef.current = "";
@@ -1173,15 +1230,19 @@ export function useRemoteControlController() {
       !loggedIn ||
       !selectedDeviceId ||
       selectedDeviceIsCurrentAuthDevice ||
-      selectedDeviceOccupied ||
+      occupiedByOthers ||
       busy !== null ||
       browserRemoteState.stage !== "idle" ||
       signalGatewayState === "connected" ||
-      autoConnectAttemptedDeviceRef.current === selectedDeviceId
+      autoConnectAttemptedDeviceRef.current === selectedDeviceId ||
+      // 自有设备需等设备列表加载完、且确实能定位到该设备，才知道占用情况并决定是否接管；
+      // 远程协助的目标不在设备列表内，走各自的加入流程，不受此限制。
+      (!remoteAssistanceActive && (!devicesLoaded || !selectedDevice))
     ) {
       return;
     }
-    // 进入设备控制页后自动发起一次连接；占用中的设备已被 selectedDeviceOccupied 排除，不会强连。
+    // 进入设备控制页后自动发起一次连接：他人占用已被 occupiedByOthers 排除；
+    // 若仅被自己上一个会话占用，handleNextAction 会自动接管（force join）。
     autoConnectAttemptedDeviceRef.current = selectedDeviceId;
     void handleNextAction();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleNextAction 每次渲染重建，不入依赖；用 ref 保证每台设备只自动连一次
@@ -1191,7 +1252,10 @@ export function useRemoteControlController() {
     loggedIn,
     selectedDeviceId,
     selectedDeviceIsCurrentAuthDevice,
-    selectedDeviceOccupied,
+    occupiedByOthers,
+    devicesLoaded,
+    selectedDevice,
+    remoteAssistanceActive,
     busy,
     browserRemoteState.stage,
     signalGatewayState,
@@ -1221,6 +1285,37 @@ export function useRemoteControlController() {
     stage.addEventListener("wheel", lockPageScroll, { passive: false });
     return () => stage.removeEventListener("wheel", lockPageScroll);
   }, [inputControlActive]);
+
+  // 画面源信息：为每一路视频附上分辨率与是否有信号；hidden tile 的 videoWidth 依然是真实值，
+  // 因此即使某路当前未显示，也能据此标注“无信号”。未采样到（刚连上）时按有信号处理，避免误报。
+  const remoteVideoSources: RemoteVideoSourceInfo[] = remoteVideoStreams.map((video, index) => {
+    const sample = remoteVideoSamplesById[video.id];
+    const active = Boolean(sample) && (sample?.width ?? 0) > 0 && (sample?.height ?? 0) > 0;
+    return {
+      id: video.id,
+      index,
+      resolution: active ? `${sample?.width}×${sample?.height}` : "",
+      hasSignal: !sample || active,
+    };
+  });
+  const primaryRemoteVideoSample = remoteVideoSamplesById[primaryRemoteVideoId];
+  const primaryRemoteVideoActive =
+    !primaryRemoteVideoSample || ((primaryRemoteVideoSample.width ?? 0) > 0 && (primaryRemoteVideoSample.height ?? 0) > 0);
+  const remoteShortcutPlatform = remoteShortcutGroupTitleForPlatform(resolveTargetPlatform());
+  const deviceNotFound = loggedIn && devicesLoaded && Boolean(selectedDeviceId) && !selectedDevice && !remoteAssistanceActive;
+  // 画面区中央的状态文案：与顶栏状态对齐，避免出现“未连接/已就绪/等待连接”多套说法互相矛盾。
+  const stageStatusLabel =
+    browserRemoteState.stage === "connected"
+      ? "已连接"
+      : browserRemoteState.remoteTrackCount > 0
+        ? "正在加载画面…"
+        : signalGatewayState === "connected" || busy === "signal-start" || busy === "browser-remote-start"
+          ? "连接中…"
+          : occupiedByOthers && !forceJoin
+            ? "设备被占用，点「接管并开始连接」"
+            : roomResponse || remoteBootstrap
+              ? "已就绪，点「开始连接」"
+              : "未连接";
 
   const loginPageProps = {
     authJson,
@@ -1266,6 +1361,7 @@ export function useRemoteControlController() {
     onAssistanceTargetPlatformChange: setAssistanceTargetPlatform,
     onStartRemoteAssistance: () => void handleStartRemoteAssistance(),
     onExport: () => void handleExport(),
+    onCopyAuthJson: () => void handleCopyAuthJson(),
     onLogout: () => void handleLogout(),
   };
 
@@ -1293,6 +1389,7 @@ export function useRemoteControlController() {
     controlChannelLabel,
     controlChannelState,
     debugEvents,
+    deviceNotFound,
     effectiveConnectionRouteLabel,
     error,
     forceJoin,
@@ -1305,15 +1402,21 @@ export function useRemoteControlController() {
     networkSwitchSummary,
     nextAction,
     normalJoinTakeoverHint,
+    occupiedBySelfClient,
+    occupyingParticipantLabel,
+    primaryRemoteVideoActive,
     primaryRemoteVideoId,
     remoteBootstrap,
     remoteRecoveryLabel,
+    remoteShortcutPlatform,
     remoteStageRef,
     remoteStageFrameRef,
     isFullscreen,
     remoteStageViewMode,
     remoteVideoCount,
+    remoteVideoSources,
     remoteVideoStreams,
+    stageStatusLabel,
     roomDebugPayload,
     roomJoinFailureMessage,
     roomJoinFailureTakeoverHint,

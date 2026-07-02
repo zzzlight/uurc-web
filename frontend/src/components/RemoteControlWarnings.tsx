@@ -1,13 +1,13 @@
-import { TriangleAlert } from "lucide-react";
+import { Info, TriangleAlert } from "lucide-react";
 
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 
 export function RemoteControlWarnings({
   forceJoin,
   normalJoinTakeoverHint,
+  occupiedBySelfClient,
+  occupyingParticipantLabel,
   roomJoinFailureMessage,
-  roomJoinFailureTakeoverHint,
-  roomRequiresTakeover,
   selectedDeviceOccupied,
   selfDeviceBlockedReason,
   signalGatewayErrorHint,
@@ -15,25 +15,24 @@ export function RemoteControlWarnings({
   RemoteControlPageProps,
   | "forceJoin"
   | "normalJoinTakeoverHint"
+  | "occupiedBySelfClient"
+  | "occupyingParticipantLabel"
   | "roomJoinFailureMessage"
-  | "roomJoinFailureTakeoverHint"
-  | "roomRequiresTakeover"
   | "selectedDeviceOccupied"
   | "selfDeviceBlockedReason"
   | "signalGatewayErrorHint"
 >) {
   return (
     <>
-      {selectedDeviceOccupied && !forceJoin ? (
-        <div className="occupancy-callout">
-          <TriangleAlert size={17} />
-          <span>已有控制端在线</span>
+      {occupiedBySelfClient ? (
+        <div className="occupancy-callout info">
+          <Info size={17} />
+          <span>检测到你之前的会话仍在占用这台设备，将自动接管，无需额外操作。</span>
         </div>
-      ) : null}
-      {roomRequiresTakeover ? (
+      ) : selectedDeviceOccupied && !forceJoin ? (
         <div className="occupancy-callout takeover">
           <TriangleAlert size={17} />
-          <span>选择接管后重试</span>
+          <span>该设备正被{occupyingParticipantLabel}占用。点击「接管并开始连接」可强制接管，对方将被断开。</span>
         </div>
       ) : null}
       {roomJoinFailureMessage ? (
@@ -46,12 +45,6 @@ export function RemoteControlWarnings({
         <div className="occupancy-callout">
           <TriangleAlert size={17} />
           <span>{selfDeviceBlockedReason}</span>
-        </div>
-      ) : null}
-      {roomJoinFailureTakeoverHint ? (
-        <div className="occupancy-callout takeover">
-          <TriangleAlert size={17} />
-          <span>{roomJoinFailureTakeoverHint}</span>
         </div>
       ) : null}
       {normalJoinTakeoverHint ? (

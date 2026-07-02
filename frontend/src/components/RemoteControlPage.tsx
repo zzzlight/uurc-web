@@ -1,4 +1,4 @@
-import { TerminalSquare } from "lucide-react";
+import { MonitorX, TerminalSquare } from "lucide-react";
 
 import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 import { RemoteCommandBar } from "./RemoteCommandBar.js";
@@ -10,6 +10,30 @@ import { RemoteControlTopbar } from "./RemoteControlTopbar.js";
 import { RemoteControlWarnings } from "./RemoteControlWarnings.js";
 
 export function RemoteControlPage(props: RemoteControlPageProps) {
+  if (props.deviceNotFound) {
+    return (
+      <main className="control-shell">
+        <header className="control-topbar">
+          <button className="secondary-button" onClick={props.onReturnToDevices}>
+            返回设备列表
+          </button>
+          <div>
+            <h1>设备不存在</h1>
+          </div>
+          <div className="topbar-actions" />
+        </header>
+        <section className="device-missing-card">
+          <MonitorX size={40} />
+          <strong>找不到这台设备</strong>
+          <p>该设备可能已被移除、不属于当前账号，或链接已失效。请返回设备列表重新选择。</p>
+          <button className="primary-action-button" onClick={props.onReturnToDevices}>
+            返回设备列表
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="control-shell">
       <RemoteControlTopbar {...props} />

@@ -1,15 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ChevronDown, Keyboard } from "lucide-react";
 
-import { REMOTE_SHORTCUT_GROUPS, type RemoteShortcut } from "../remote/remoteShortcuts.js";
+import { orderRemoteShortcutGroups, type RemoteShortcut } from "../remote/remoteShortcuts.js";
 
 interface RemoteShortcutMenuProps {
   disabled: boolean;
+  platformKey: string;
   onRemoteShortcut: (shortcut: RemoteShortcut) => void;
 }
 
-export function RemoteShortcutMenu({ disabled, onRemoteShortcut }: RemoteShortcutMenuProps) {
+export function RemoteShortcutMenu({ disabled, platformKey, onRemoteShortcut }: RemoteShortcutMenuProps) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const groups = useMemo(() => orderRemoteShortcutGroups(platformKey), [platformKey]);
 
   useEffect(() => {
     const details = detailsRef.current;
@@ -39,7 +41,7 @@ export function RemoteShortcutMenu({ disabled, onRemoteShortcut }: RemoteShortcu
         <ChevronDown className="shortcut-menu-chevron" size={15} />
       </summary>
       <div className="shortcut-menu-panel" role="menu" aria-label="远控快捷键">
-        {REMOTE_SHORTCUT_GROUPS.map((group) => (
+        {groups.map((group) => (
           <section className="shortcut-menu-group" key={group.title} aria-label={group.title}>
             <h3>{group.title}</h3>
             <div className="shortcut-menu-grid">

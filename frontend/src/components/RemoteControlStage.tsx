@@ -4,7 +4,6 @@ import type { RemoteControlPageProps } from "../app/remoteControlPageProps.js";
 import { RemoteVideoTile } from "./RemoteVideoTile.js";
 
 export function RemoteControlStage({
-  browserRemoteState,
   browserStageLabel,
   hasRemoteVideo,
   inputControlActive,
@@ -19,18 +18,17 @@ export function RemoteControlStage({
   onRemoteStagePointerUp,
   onRemoteStageWheel,
   onRemoteVideoSample,
+  primaryRemoteVideoActive,
   primaryRemoteVideoId,
-  remoteBootstrap,
   remoteStageRef,
   remoteStageViewMode,
   remoteVideoCount,
   remoteVideoStreams,
-  roomResponseReady,
   selectedDevice,
+  stageStatusLabel,
   videoFlowLabel,
 }: Pick<
   RemoteControlPageProps,
-  | "browserRemoteState"
   | "browserStageLabel"
   | "hasRemoteVideo"
   | "inputControlActive"
@@ -45,14 +43,14 @@ export function RemoteControlStage({
   | "onRemoteStagePointerUp"
   | "onRemoteStageWheel"
   | "onRemoteVideoSample"
+  | "primaryRemoteVideoActive"
   | "primaryRemoteVideoId"
-  | "remoteBootstrap"
   | "remoteStageRef"
   | "remoteStageViewMode"
   | "remoteVideoCount"
   | "remoteVideoStreams"
-  | "roomResponseReady"
   | "selectedDevice"
+  | "stageStatusLabel"
   | "videoFlowLabel"
 >) {
   return (
@@ -91,6 +89,13 @@ export function RemoteControlStage({
               />
             ))}
           </div>
+          {!primaryRemoteVideoActive ? (
+            <div className="stage-center stage-center--overlay">
+              <Monitor size={34} />
+              <strong>该画面暂无内容</strong>
+              <span>这一路当前没有画面输出，可在右侧「画面源」切换到其他画面。</span>
+            </div>
+          ) : null}
           <div className="stage-badge">
             {browserStageLabel} · {remoteVideoCount} 路视频 · {videoFlowLabel} · 输入 {inputControlLabel}
           </div>
@@ -101,13 +106,7 @@ export function RemoteControlStage({
           <div className="stage-center">
             <Monitor size={34} />
             <strong>{selectedDevice?.alias ?? "未选择设备"}</strong>
-            <span>
-              {browserRemoteState.remoteTrackCount > 0
-                ? "正在加载画面"
-                : remoteBootstrap || roomResponseReady
-                  ? "已就绪"
-                  : "未连接"}
-            </span>
+            <span>{stageStatusLabel}</span>
           </div>
         </>
       )}

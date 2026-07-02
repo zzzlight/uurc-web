@@ -42,6 +42,13 @@ export type RemoteVideoStream = {
   stream: MediaStream;
 };
 
+export type RemoteVideoSourceInfo = {
+  id: string;
+  index: number;
+  resolution: string;
+  hasSignal: boolean;
+};
+
 export type RemoteConnectionQualityState = "pending" | "good" | "warn" | "bad";
 
 export type RemoteConnectionQuality = {

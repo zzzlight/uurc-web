@@ -50,7 +50,7 @@ export function RemoteAssistanceCard({
             inputMode="numeric"
             maxLength={12}
             onChange={(event) => onConnectIdChange(event.target.value.replace(/\D/g, ""))}
-            placeholder="请输入设备 ID"
+            placeholder="6-12 位数字"
             value={connectId}
           />
         </label>
@@ -61,7 +61,7 @@ export function RemoteAssistanceCard({
             autoCapitalize="characters"
             autoComplete="one-time-code"
             onChange={(event) => onConnectCodeChange(event.target.value.trim())}
-            placeholder="可留空等待对方确认"
+            placeholder="可留空，由对方确认"
             spellCheck={false}
             value={connectCode}
           />
@@ -86,7 +86,7 @@ export function RemoteAssistanceCard({
       </form>
 
       <p className="remote-assistance-note">
-        {notice || "如果伙伴设备要求确认，可不填验证码直接发起；如果要求验证码，则需要对方提供临时验证码。"}
+        {notice || "验证码可留空：留空时对方需在其设备上点「确认」；若对方设置了验证码，则需向对方索取后填入。"}
       </p>
     </section>
   );

@@ -54,15 +54,14 @@ export function LoginPage({
         <StatusPill state="warn">未登录</StatusPill>
       </header>
 
-      {error ? (
-        <section className="error-strip" role="alert" aria-live="assertive">
-          <TerminalSquare size={18} />
-          <span>{error}</span>
-        </section>
-      ) : null}
-
       <section className="login-layout">
         <div className="login-actions">
+          {error ? (
+            <section className="error-strip" role="alert" aria-live="assertive">
+              <TerminalSquare size={18} />
+              <span>{error}</span>
+            </section>
+          ) : null}
           <LoginForm
             busy={busy}
             canLogin={canLogin}

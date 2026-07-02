@@ -101,3 +101,9 @@
   background: var(--danger-soft);
   border-color: #fecaca;
 }
+
+.occupancy-callout.info {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-soft-border, #bfdbfe);
+}

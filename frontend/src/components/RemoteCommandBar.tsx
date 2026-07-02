@@ -28,6 +28,7 @@ export function RemoteCommandBar({
   onToggleInputControl,
   onToggleFullscreen,
   remoteRecoveryLabel,
+  remoteShortcutPlatform,
   remoteStageViewMode,
 }: Pick<
   RemoteControlPageProps,
@@ -44,6 +45,7 @@ export function RemoteCommandBar({
   | "onToggleInputControl"
   | "onToggleFullscreen"
   | "remoteRecoveryLabel"
+  | "remoteShortcutPlatform"
   | "remoteStageViewMode"
 >) {
   const nextStageMode = remoteStageViewMode === "fit" ? "fill" : "fit";
@@ -111,7 +113,7 @@ export function RemoteCommandBar({
           <Maximize2 size={17} />
           {isFullscreen ? "退出全屏" : "全屏"}
         </button>
-        <RemoteShortcutMenu disabled={!inputControlActive} onRemoteShortcut={onRemoteShortcut} />
+        <RemoteShortcutMenu disabled={!inputControlActive} platformKey={remoteShortcutPlatform} onRemoteShortcut={onRemoteShortcut} />
       </div>
     </section>
   );
