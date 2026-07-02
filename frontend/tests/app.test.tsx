@@ -504,7 +504,8 @@ describe("App console", () => {
     await waitFor(() => {
       expect(document.body.textContent).toContain("服务端拒绝加入房间");
     });
-    expect(screen.getByText("选择接管后重试。")).toBeInTheDocument();
+    // 占用者非本人时，提示合并到占用条：告知可点「接管并开始连接」强制接管。
+    expect(document.body.textContent).toContain("接管并开始连接");
     expect(screen.queryByRole("button", { name: "打开远控画面" })).not.toBeInTheDocument();
   });
 
@@ -515,7 +516,7 @@ describe("App console", () => {
 
     await screen.findByRole("heading", { name: "我的设备" });
     expect(await screen.findByText("Office Mac")).toBeInTheDocument();
-    expect(screen.getByText("当前登录态")).toBeInTheDocument();
+    expect(screen.getByText("本次登录设备")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /连接 Office Mac/ })).not.toBeInTheDocument();
 
     expect(uuCalls("/api/v1/room/join/by_device/desktop-1")).toHaveLength(0);
@@ -953,9 +954,10 @@ describe("App console", () => {
     expect(screen.getByRole("checkbox", { name: "自动重连" })).toBeChecked();
 
     expect(screen.getByRole("region", { name: "画面源" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "画面 1" })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: "画面 2" }));
-    expect(screen.getByRole("button", { name: "画面 2" })).toHaveAttribute("aria-pressed", "true");
+    // 画面源按钮名称现含分辨率/信号标注（如“画面 1 无信号”），用前缀匹配定位。
+    expect(screen.getByRole("button", { name: /^画面 1/ })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: /^画面 2/ }));
+    expect(screen.getByRole("button", { name: /^画面 2/ })).toHaveAttribute("aria-pressed", "true");
 
     await user.click(screen.getByRole("button", { name: "读取剪贴板" }));
     await waitFor(() => {
