@@ -56,11 +56,11 @@ export function DeviceAccountPanel({
       </section>
 
       <div className="button-row account-actions">
-        <button onClick={onExport} disabled={busy !== null}>
+        <button className="primary-action-button" onClick={onExport} disabled={busy !== null}>
           {busy === "export" ? <LoaderCircle className="spin" size={17} /> : <Download size={17} />}
-          导出登录态
+          导出账号凭证
         </button>
-        <button className="secondary-button" onClick={onLogout} disabled={busy !== null}>
+        <button className="danger-button" onClick={onLogout} disabled={busy !== null}>
           {busy === "logout" ? <LoaderCircle className="spin" size={17} /> : <LogOut size={17} />}
           退出登录
         </button>
@@ -68,10 +68,10 @@ export function DeviceAccountPanel({
 
       {authJson.trim() ? (
         <details className="identity-details export-details" open>
-          <summary>登录态备份</summary>
+          <summary>账号凭证备份</summary>
           <div className="export-details-head">
             <label className="field-label" htmlFor="auth-json-export">
-              登录态 JSON
+              账号凭证 JSON
             </label>
             <button type="button" className="link-button" onClick={onCopyAuthJson}>
               <Copy size={14} />
@@ -79,7 +79,7 @@ export function DeviceAccountPanel({
             </button>
           </div>
           <textarea id="auth-json-export" name="auth-json-export" value={authJson} readOnly spellCheck={false} />
-          <p className="field-hint">妥善保管：任何人拿到它即可登录你的账号。可在其他设备的「导入登录态」中粘贴恢复。</p>
+          <p className="field-hint">妥善保管：任何人拿到它即可登录你的账号。可在其他设备的「导入账号凭证」中粘贴恢复。</p>
         </details>
       ) : null}
 

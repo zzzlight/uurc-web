@@ -109,14 +109,14 @@ function readAutoConnectPref(): boolean {
 // 把底层/协议级英文错误映射成用户能看懂、带“怎么办”的中文；未知错误原样返回。
 function toFriendlyError(message: string): string {
   const text = message || "";
-  if (/Unexpected token|not valid JSON|Unexpected end of JSON|JSON at position/i.test(text)) return "登录态 JSON 格式不正确，请检查是否完整复制。";
+  if (/Unexpected token|not valid JSON|Unexpected end of JSON|JSON at position/i.test(text)) return "账号凭证 JSON 格式不正确，请检查是否完整复制。";
   if (/Join a room before starting remote control|请先加入房间/i.test(text)) return "请先加入设备房间再开始远控。";
   if (/ack timed out|timed out|timeout/i.test(text)) return "连接超时，请稍后重试。";
   if (/signal control ack failed/i.test(text)) return "对端拒绝了本次连接，请稍后重试或更换网络。";
   if (/did not include a ControlResult/i.test(text)) return "未收到对端的连接许可，请重试。";
   if (/socket is not connected|is not connected|not open/i.test(text)) return "连接服务未就绪，请重新连接。";
   if (/Failed to fetch|NetworkError|ERR_NETWORK|network error/i.test(text)) return "网络异常，请检查网络后重试。";
-  if (/Missing required login state/i.test(text)) return "登录态不完整，请重新登录。";
+  if (/Missing required login state/i.test(text)) return "账号凭证不完整，请重新登录。";
   return text;
 }
 
@@ -232,7 +232,7 @@ export function useRemoteControlController() {
 
   useEffect(() => {
     void loadStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载时恢复一次登录态
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载时恢复一次账号凭证
   }, []);
 
   useEffect(() => {
@@ -329,7 +329,7 @@ export function useRemoteControlController() {
       if (!status.hasState) {
         const fieldLabels: Record<string, string> = { token: "令牌", userId: "用户 ID", deviceId: "设备 ID" };
         const missing = (status.missingFields ?? []).map((field) => fieldLabels[field] ?? field).join("、");
-        throw new Error(missing ? `导入失败：登录态缺少 ${missing}` : "导入失败：登录态不完整");
+        throw new Error(missing ? `导入失败：账号凭证缺少 ${missing}` : "导入失败：账号凭证不完整");
       }
       setLoginNotice("已导入");
       setDevicesLoaded(false);
@@ -341,7 +341,7 @@ export function useRemoteControlController() {
     await run("export", async () => {
       const state = await exportAuthState();
       setAuthJson(JSON.stringify(state, null, 2));
-      showToast("已生成登录态备份，请妥善保管");
+      showToast("已生成账号凭证备份，请妥善保管");
     });
   }
 
@@ -354,14 +354,14 @@ export function useRemoteControlController() {
     }
     try {
       await clipboard.writeText(authJson);
-      showToast("已复制登录态到剪贴板");
+      showToast("已复制账号凭证到剪贴板");
     } catch {
       showToast("复制失败，请手动选择文本复制");
     }
   }
 
   async function handleLogout() {
-    if (typeof window !== "undefined" && !window.confirm("退出后需重新登录。若未导出登录态备份，建议先导出。确定退出？")) {
+    if (typeof window !== "undefined" && !window.confirm("退出后需重新登录。若未导出账号凭证备份，建议先导出。确定退出？")) {
       return;
     }
     await run("logout", async () => {
