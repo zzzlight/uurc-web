@@ -122,7 +122,7 @@ describe("App console", () => {
     expect(screen.getByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/login");
     expect(screen.getByLabelText("用手机号登录")).toBeInTheDocument();
-    expect(screen.getByText("导入登录态")).toBeInTheDocument();
+    expect(screen.getByText("导入账号凭证")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "远控画面" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
     expect(screen.queryByText("Android 刷新")).not.toBeInTheDocument();
@@ -145,9 +145,9 @@ describe("App console", () => {
     expect(window.location.pathname).toBe("/devices");
     expect(screen.getAllByText("user-1").length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("button", { name: "导出登录态" }));
+    await user.click(screen.getByRole("button", { name: "导出账号凭证" }));
     await waitFor(() => {
-      expect((screen.getByLabelText("登录态 JSON") as HTMLTextAreaElement).value).toContain('"token": "header.payload.signature"');
+      expect((screen.getByLabelText("账号凭证 JSON") as HTMLTextAreaElement).value).toContain('"token": "header.payload.signature"');
     });
   });
 
@@ -158,7 +158,7 @@ describe("App console", () => {
     await screen.findByRole("heading", { name: "我的设备" });
     await screen.findByRole("button", { name: /Office Mac/ });
     expect(screen.queryByRole("heading", { name: "远控画面" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "导出登录态" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出账号凭证" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /连接 Office Mac/ }));
 
@@ -473,8 +473,8 @@ describe("App console", () => {
     expect(within(identityStatus).getByText("网页控制端")).toBeInTheDocument();
     expect(within(identityStatus).getByText("状态")).toBeInTheDocument();
     expect(within(identityStatus).getByText("本机控制端")).toBeInTheDocument();
-    expect(screen.queryByText("导入登录态")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "导出登录态" })).toBeInTheDocument();
+    expect(screen.queryByText("导入账号凭证")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出账号凭证" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
   });
 
@@ -489,7 +489,7 @@ describe("App console", () => {
 
     await screen.findByRole("heading", { name: "登录" });
     expect(window.localStorage.getItem("uurc.loginState")).toBeNull();
-    expect(screen.getByText("导入登录态")).toBeInTheDocument();
+    expect(screen.getByText("导入账号凭证")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "我的设备" })).not.toBeInTheDocument();
   });
 

@@ -23,8 +23,8 @@ function AppRoutes() {
   let content: ReactNode;
   if (controller.authLoading) {
     content = (
-      <main className="product-shell auth-product-shell" aria-label="正在恢复登录态">
-        <p className="empty-text">正在恢复登录态...</p>
+      <main className="product-shell auth-product-shell" aria-label="正在恢复账号凭证">
+        <p className="empty-text">正在恢复账号凭证...</p>
       </main>
     );
   } else if (!controller.loggedIn) {
