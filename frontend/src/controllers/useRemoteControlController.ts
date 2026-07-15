@@ -650,13 +650,17 @@ export function useRemoteControlController() {
       onStateChange: setBrowserRemoteState,
     });
     browserRemoteSession.current = session;
-    const controlConnectType = roomJoinContext?.kind === "remote_assistance"
+        const controlConnectType = roomJoinContext?.kind === "remote_assistance"
       ? STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Assistance
       : STREAMER_CONTROL_CONNECT_TYPES.ControlConnectType_Normal;
+    // 被控端设备 ID：远程协助用 connectId，普通控制用被控设备 ID，兜底用控制端自身 ID
+    const targetDeviceId = roomJoinContext?.kind === "remote_assistance"
+      ? (roomJoinContext.connectId ?? roomJoinContext.deviceId)
+      : (selectedDeviceId || authStatus.deviceId);
     const state = await session.start({
       appControlId,
       appDataBase64: buildDefaultStreamerConnectOptionsBase64({
-        deviceId: authStatus.deviceId,
+        deviceId: targetDeviceId,
         controlConnectType,
       }),
       streamerData: buildStreamerControlStreamerDataJson({ controlId: appControlId }),
