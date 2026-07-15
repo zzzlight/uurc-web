@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "uurc-web",
+  "name": "uurc-web-mypage",
   "main": "cloudflare/src/index.ts",
   "compatibility_date": "2026-05-17",
   "assets": {
